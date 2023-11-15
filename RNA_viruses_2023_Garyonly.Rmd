@@ -187,6 +187,12 @@ colnames(tax) <- c("RdRp_ID", "taxonomy", "bitscore", "Contig")
 ictv <- read.delim("ICTV_RNA_viruses.txt", sep="\t", header=T, stringsAsFactors = F)
 tax$Class <- tax$taxonomy
 
+getOrder <- function(taxname) {
+  if ((taxname %like% "ota$") | (taxname %like% "tes$") | (taxname %like% "les$")) return(taxname) # if it's already a phylum or class name keep it as is
+  if (taxname %in% c("Zhaovirus", "Yanvirus", "Permutotetraviridae", "Ophioviridae")) return("Unassigned") # These exceptions don't have a class or phylum
+  if (taxname %like% "dae$") return(unique(ictv$Order[ictv$Family == taxname]))
+  else return(unique(ictv$Order[ictv$Genus == taxname]))
+}
 getClass <- function(taxname) {
   if ((taxname %like% "ota$") | (taxname %like% "tes$")) return(taxname) # if it's already a phylum or class name keep it as is
   if (taxname == "Levivirales") return("Leviviricetes") # Levivirales don't exist anymore so I had to define this manually
@@ -198,6 +204,7 @@ getClass <- function(taxname) {
 }
 
 tax$Class <- unlist(sapply(tax$taxonomy, getClass))
+tax$Order <- unlist(sapply(tax$taxonomy, getOrder))
 
 view(tax[which(duplicated(tax$Contig)),]) # Empty = No duplicates
 # If not empty run this
@@ -209,12 +216,12 @@ for (r in which(duplicated(tax$Contig))) {
 }
 tax <- tax[-remrows,]
 
-write.csv(tax, "Class_level_tax.tsv", row.names = FALSE)
+write.csv(tax, "Order_level_tax.tsv", row.names = FALSE)
 # To load the existing table
-tax <- read.csv("Class_level_tax.tsv")
+tax <- read.csv("Order_level_tax.tsv")
 
 tax_vOTU <- tax %>%
-  select(Contig, Class, taxonomy) %>%
+  select(Contig, Class, Order, taxonomy) %>%
   unique()
 
 wetup_tax <- wetup %>% rownames_to_column("Contig") %>% left_join(tax_vOTU, by="Contig")
@@ -230,7 +237,7 @@ wetup <- wetup_tax %>% select(Contig, taxonomy, starts_with("T")) %>%
 wetup_pvt <- wetup_tax %>% 
   remove_rownames() %>%
   column_to_rownames("Contig") %>%
-  pivot_longer(cols=-c(Class, taxonomy), names_to="variable", values_to="value") %>%
+  pivot_longer(cols=-c(Class, Order, taxonomy), names_to="variable", values_to="value") %>%
   mutate(pvt = ifelse(value > 0, 1, 0)) %>%
   group_by(Class, variable) %>%
   summarize_at("pvt", sum) %>%
@@ -259,10 +266,19 @@ ggplot(data = wetup_tax_plot, aes(x = Class, y = pvt, fill=Class)) +
   xlab("taxonomy") + ylab("Number of vOTUs per sample")
 ggsave("wetup_richness_tax_box_class.pdf")
 # Relative abundance stacked barchart
+for_durna <- wetup_tax %>% 
+  remove_rownames() %>%
+  column_to_rownames("Contig") %>%
+  pivot_longer(cols=-c(Class, Order, taxonomy), names_to="variable", values_to="rpkm") %>%
+  group_by(Order, variable) %>%
+  summarize_at("rpkm", sum) %>%
+  mutate(variable = as.character(variable)) %>%
+  group_by(variable) %>%
+  mutate(pct = rpkm*100/sum(rpkm))
 wetup_pct <- wetup_tax %>% 
   remove_rownames() %>%
   column_to_rownames("Contig") %>%
-  pivot_longer(cols=-c(Class, taxonomy), names_to="variable", values_to="rpkm") %>%
+  pivot_longer(cols=-c(Class, Order, taxonomy), names_to="variable", values_to="rpkm") %>%
   group_by(Class, variable) %>%
   summarize_at("rpkm", sum) %>%
   mutate(variable = as.character(variable)) %>%
@@ -273,6 +289,11 @@ wetup_tax_plot <- wetup_pct %>%
   mutate(Class = ifelse(Class %in% top11, Class, "Other")) %>%
   mutate(Class = factor(Class))
 wetup_tax_plot$Class <- fct_relevel(wetup_tax_plot$Class, top11)
+
+# Most phages are Leviviricetes or Durnavirales
+levi <- wetup_tax_plot %>% filter(Class %like% "Levivi") # Save Leviviricetes for later script
+durna <- for_durna %>% filter(Order %like% "Durnavi") # Save Durnavirales phages for later (see Neri 2022)
+
 ggplot(data = wetup_tax_plot, aes(x = variable, y = pct, fill=Class)) + 
   geom_bar(stat = "identity", position = "fill") + 
   scale_fill_brewer(palette = "Paired", direction = -1) + 
@@ -327,6 +348,7 @@ l_p <- lapply(l_p, getsig)
 getsig <- function (x) {which(x <= 0.05)}
 sigp <- lapply(l_p, getsig) # get indices of significant effects per class
 sigR <- map2(l_R, sigp, `[`) # get R^2 values of these effects
+sigF <- map2(l_F, sigp, `[`) # get R^2 values of these effects
 # P addition significant: Amabiliviricetes, Leviviricetes, Howeltoviricetes, Tolucaviricetes and Ellioviricetes
 # time significant: Amabiliviricetes, Leviviricetes, Howeltoviricetes, Tolucaviricetes, Duplopiviricetes, Miaviricetes, Kitrinoviricota and Ellioviricetes
 # isotope significant: Leviviricetes, Alsuviricetes, Duplopiviricetes, Miaviricetes, Kitrinoviricota and Ellioviricetes
@@ -772,5 +794,165 @@ p_S <- ggplot(S, aes(x=treats, y=Spec_num, fill=treats)) +
 
 ggarrange(p_H, p_simp, p_invsimp, p_S, nrow=4, ncol=1)
 ggsave("diversity_indices.pdf", width=6, height=10.5)
+```
+
+```{r}
+# Plot respiration
+resp <- read.delim("respiration.tsv", sep="\t", header=T)
+#colnames(resp)
+resp <- resp %>% 
+  mutate(CO2_ppm = as.numeric(gsub(",", "\\.", CO2_ppm))) %>%
+  mutate(time = case_when(
+  sample_ID %like% "std" ~ NA,
+  sample_ID %like% "blank" ~ 0,
+  .default = as.numeric(gsub("W.*", "", gsub("^.*T", "", sample_ID)))
+)) %>%
+  mutate(amend = case_when(
+    sample_ID %like% "P" ~ "P",
+    .default = "No P"
+  )) %>% 
+  select(time, CO2_ppm, amend) %>% pivot_longer(cols = CO2_ppm, values_to = "CO2") %>%
+  filter(!is.na(time)) %>%
+  group_by(time, amend) %>% summarise(CO2_mean = mean(CO2), CO2_sd = sd(CO2))
+ggplot(data=resp, aes(x = time, y = CO2_mean, group = amend, color = amend)) + geom_point() + geom_line() + theme_classic() + 
+  xlab("Time (weeks)") + ylab("CO2 (ppm)") + geom_errorbar(aes(ymin=CO2_mean-CO2_sd, ymax=CO2_mean+CO2_sd), width=.2, position=position_dodge(0.1))
+ggsave("RNA_virus_respiration.pdf", width=8)
+
+# Statistical testing
+resp <- read.delim("respiration.tsv", sep="\t", header=T) %>% 
+  mutate(CO2_ppm = as.numeric(gsub(",", "\\.", CO2_ppm))) %>%
+  mutate(time = case_when(
+  sample_ID %like% "std" ~ NA,
+  sample_ID %like% "blank" ~ 0,
+  .default = as.numeric(gsub("W.*", "", gsub("^.*T", "", sample_ID)))
+)) %>%
+  mutate(amend = case_when(
+    sample_ID %like% "P" ~ "P",
+    .default = "No P"
+  )) %>% 
+  select(time, CO2_ppm, amend) %>% pivot_longer(cols = CO2_ppm, values_to = "CO2") %>%
+  filter(!is.na(time))
+resp_P <- resp %>% filter(time==0 | amend=="P")
+resp_noP <- resp %>% filter(amend=="No P")
+pairwise.wilcox.test(resp_P$CO2, resp_P$time) # 0 is significanly different from all time points p<0.05
+pairwise.wilcox.test(resp_noP$CO2, resp_noP$time) # 0 is significanly different from all time points p<0.05
+```
+```{r}
+# Simulate mortality by RNA phages during week 1
+mapping_stats <- read.delim("SBB/table_S3_viralRNA.csv", header=T, sep=";")
+# This is where I need the levi and durna tables
+levi <- levi %>% mutate(pct = pct/100)
+durna <- durna %>% mutate(pct = pct/100)
+mapping_stats <- mapping_stats %>%
+  mutate(variable = paste(gsub("-", "", Time_Point), ".R.", gsub("_", ".", Sample_Name), sep="")) %>%
+  mutate(pct_reads_mapped_to_viruses = pct_reads_mapped_to_viruses/100)
+levi <- levi %>% left_join(mapping_stats, by="variable") 
+durna <- durna %>% left_join(mapping_stats, by="variable") 
+# RNA was extracted from 0.5 g soil, so I'm multiplying the cell number by 2 to normalize per g
+levi <- levi %>% rename(levi_pct = pct) %>%
+  mutate(levi_pct_reads = levi_pct * pct_reads_mapped_to_viruses) %>%
+  mutate(levi_RNA_ng = levi_pct_reads * 2 * Total.metaT.RNA..ng.) %>%
+  mutate(Time_Point = gsub("T-", "", Time_Point))
+durna <- durna %>% rename(durna_pct = pct) %>%
+  mutate(durna_pct_reads = durna_pct * pct_reads_mapped_to_viruses) %>%
+  mutate(durna_RNA_ng = durna_pct_reads * 2 * Total.metaT.RNA..ng.) %>%
+  mutate(Time_Point = gsub("T-", "", Time_Point))
+
+levi_P <- levi %>% filter(Time_Point=="0" | str_detect(variable, "P"))
+levi_noP <- levi %>% filter(str_detect(variable, "P", negate = TRUE))
+durna_P <- durna %>% filter(Time_Point=="0" | str_detect(variable, "P"))
+durna_noP <- durna %>% filter(str_detect(variable, "P", negate = TRUE))
+# Panels A and B
+levi_P_fig <- ggplot(levi_P, aes(x = Time_Point, y = levi_RNA_ng)) + geom_boxplot(fill = "purple") + theme_classic() + 
+  xlab("Time (weeks)") + ylab("RNA from Leviviricetes (ng / g soil)") + ggtitle("With P") + ylim(0,7)
+levi_noP_fig <- ggplot(levi_noP, aes(x = Time_Point, y = levi_RNA_ng)) + geom_boxplot(fill = "salmon") + theme_classic() +
+  xlab("Time (weeks)") + ylab("RNA from Leviviricetes (ng / g soil)") + ggtitle("Without P") + ylim(0,7)
+durna_P_fig <- ggplot(durna_P, aes(x = Time_Point, y = durna_RNA_ng)) + geom_boxplot(fill = "purple") + theme_classic() + 
+  xlab("Time (weeks)") + ylab("RNA from Durnavirales (ng / g soil)") + ggtitle("With P") + ylim(0,0.02)
+durna_noP_fig <- ggplot(durna_noP, aes(x = Time_Point, y = durna_RNA_ng)) + geom_boxplot(fill = "salmon") + 
+  theme_classic() + xlab("Time (weeks)") + ylab("RNA from Durnavirales (ng / g soil)") + ggtitle("Without P") +
+  ylim(0,0.02)
+# ggarrange(levi_P_fig, levi_noP_fig, nrow = 2, ncol = 1)
+# Statistical testing of RNA amount by time
+kruskal.test(levi_RNA_ng ~ Time_Point, levi_P) # Kruskal-Wallis chi-squared = 6.9697, df = 3, p-value = 0.07287
+pairwise.wilcox.test(levi_P$levi_RNA_ng, levi_P$Time_Point, p.adjust.method = 'BH') # only 0->1 p=0.07
+kruskal.test(levi_RNA_ng ~ Time_Point, levi_noP) # Kruskal-Wallis chi-squared = 5.29, df = 3, p-value = 0.1517
+kruskal.test(durna_RNA_ng ~ Time_Point, durna_P) # Kruskal-Wallis chi-squared = 2.9048, df = 3, p-value = 0.4065
+kruskal.test(durna_RNA_ng ~ Time_Point, durna_noP) # Kruskal-Wallis chi-squared = 1.697, df = 3, p-value = 0.6376
+
+levi_P_mean <- levi_P %>% select(Time_Point, levi_RNA_ng) %>%
+  group_by(Time_Point) %>% 
+  summarise(levi_RNA_ng_mean = round(mean(levi_RNA_ng), 2), levi_RNA_ng_sd  = round(sd(levi_RNA_ng), 2))
+levi_noP_mean <- levi_noP %>% select(Time_Point, levi_RNA_ng) %>%
+  group_by(Time_Point) %>% 
+  summarise(levi_RNA_ng_mean = round(mean(levi_RNA_ng), 2), levi_RNA_ng_sd  = round(sd(levi_RNA_ng), 2))
+durna_P_mean <- durna_P %>% select(Time_Point, durna_RNA_ng) %>%
+  group_by(Time_Point) %>% 
+  summarise(durna_RNA_ng_mean = round(mean(durna_RNA_ng), 5), durna_RNA_ng_sd  = round(sd(durna_RNA_ng), 2))
+durna_noP_mean <- durna_noP %>% select(Time_Point, durna_RNA_ng) %>%
+  group_by(Time_Point) %>% 
+  summarise(durna_RNA_ng_mean = round(mean(durna_RNA_ng), 5), durna_RNA_ng_sd  = round(sd(durna_RNA_ng), 2))
+# The average Leviviricetes genome size is 4030 bp, weighing on average 1.31*10^-12 ng
+# We can back-calculate how many phages the RNA from Leviviricetes represents 
+# By picking a burst size we can calculate how many cells lysed on average
+# RNA was extracted from 0.5 g soil, so I'm multiplying the cell number by 2 to normalize per g
+levi_P_mean <- levi_P_mean %>% 
+  mutate(num_virions = levi_RNA_ng_mean*2/(1.31e-12)) %>%
+  #mutate(num_cells_BS_2 = num_virions/2) %>%
+  #mutate(num_cells_BS_20 = num_virions/20) %>%
+  mutate(num_cells_BS_200 = num_virions/200) %>%
+  mutate(num_cells_BS_2000 = num_virions/2000) %>%
+  mutate(num_cells_BS_20000 = num_virions/20000) %>%
+  mutate(num_cells_BS_200000 = num_virions/200000) %>%
+  pivot_longer(cols = starts_with("num_cells"), names_to = "burst_size", values_to = "num_cells") %>%
+  mutate(burst_size =  gsub(".*_", "", burst_size))
+levi_noP_mean <- levi_noP_mean %>% 
+  mutate(num_virions = levi_RNA_ng_mean*2/(1.31e-12)) %>%
+  #mutate(num_cells_BS_2 = num_virions/2) %>%
+  #mutate(num_cells_BS_20 = num_virions/20) %>%
+  mutate(num_cells_BS_200 = num_virions/200) %>%
+  mutate(num_cells_BS_2000 = num_virions/2000) %>%
+  mutate(num_cells_BS_20000 = num_virions/20000) %>%
+  mutate(num_cells_BS_200000 = num_virions/200000) %>%
+  pivot_longer(cols = starts_with("num_cells"), names_to = "burst_size", values_to = "num_cells") %>%
+  mutate(burst_size =  gsub(".*_", "", burst_size))
+# durnavirales are double stranded, so the average genome size has to be doubled
+durna_P_mean <- durna_P_mean %>% 
+  mutate(num_virions = durna_RNA_ng_mean*2/(2*3.68e-11)) %>%
+  mutate(num_cells_BS_200 = num_virions/200) %>%
+  mutate(num_cells_BS_2000 = num_virions/2000) %>%
+  mutate(num_cells_BS_20000 = num_virions/20000) %>%
+  mutate(num_cells_BS_200000 = num_virions/200000) %>%
+  pivot_longer(cols = starts_with("num_cells"), names_to = "burst_size", values_to = "num_cells") %>%
+  mutate(burst_size =  gsub(".*_", "", burst_size))
+durna_noP_mean <- durna_noP_mean %>% 
+  mutate(num_virions = durna_RNA_ng_mean*2/(2*3.68e-11)) %>%
+  mutate(num_cells_BS_200 = num_virions/200) %>%
+  mutate(num_cells_BS_2000 = num_virions/2000) %>%
+  mutate(num_cells_BS_20000 = num_virions/20000) %>%
+  mutate(num_cells_BS_200000 = num_virions/200000) %>%
+  pivot_longer(cols = starts_with("num_cells"), names_to = "burst_size", values_to = "num_cells") %>%
+  mutate(burst_size =  gsub(".*_", "", burst_size))
+# Panels C and D
+levi_P_mean_fig <- ggplot(data = levi_P_mean, aes(x = Time_Point, y = num_cells, colour = burst_size, group = burst_size)) +
+  theme_classic() + xlab("Time (weeks)") + ylab("Mean total lysed bacteria / g soil") +
+  scale_color_brewer(palette = "Purples", direction = -1) + geom_point() + geom_line() + 
+  ggtitle("With P") + scale_y_continuous(trans='log10')
+levi_noP_mean_fig <- ggplot(data = levi_noP_mean, aes(x = Time_Point, y = num_cells, colour = burst_size, group = burst_size)) +
+  theme_classic() + xlab("Time (weeks)") + ylab("Mean total lysed bacteria / g soil") +
+  scale_color_brewer(palette = "Reds", direction = -1) + geom_point() + geom_line() + 
+  ggtitle("Without P")  + scale_y_continuous(trans='log10')
+durna_P_mean_fig <- ggplot(data = durna_P_mean, aes(x = Time_Point, y = num_cells, colour = burst_size, group = burst_size)) +
+  theme_classic() + xlab("Time (weeks)") + ylab("Mean total lysed bacteria / g soil") +
+  scale_color_brewer(palette = "Purples", direction = -1) + geom_point() + geom_line() + 
+  ggtitle("With P") + scale_y_continuous(trans='log10')
+durna_noP_mean_fig <- ggplot(data = durna_noP_mean, aes(x = Time_Point, y = num_cells, colour = burst_size, group = burst_size)) +
+  theme_classic() + xlab("Time (weeks)") + ylab("Mean total lysed bacteria / g soil") +
+  scale_color_brewer(palette = "Reds", direction = -1) + geom_point() + geom_line() + 
+  ggtitle("Without P") + scale_y_continuous(trans='log10')
+ggarrange(levi_P_fig, levi_noP_fig, levi_P_mean_fig, levi_noP_mean_fig, nrow = 2, ncol = 2)
+ggsave("fig5_lysis_simulation.pdf", height=6, width=8)
+ggarrange(durna_P_fig, durna_noP_fig, durna_P_mean_fig, durna_noP_mean_fig, nrow = 2, ncol = 2)
+ggsave("fig5_lysis_simulation_durna.pdf", height=6, width=8)
 ```
 
