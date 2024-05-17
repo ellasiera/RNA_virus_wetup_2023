@@ -1,0 +1,13 @@
+"Contig","T0.R.Dry.soil.A","T0.R.Dry.soil.B","T0.R.Dry.soil.C","T1.R.H218O.A","T1.R.H218O.B","T1.R.H218O.C","T1.R.H218O.P.A","T1.R.H218O.P.B","T1.R.H218O.P.C","T1.R.H2O.A","T1.R.H2O.B","T1.R.H2O.C","T1.R.H2O.P.A","T1.R.H2O.P.B","T1.R.H2O.P.C","taxonomy","Class","Order","host"
+"T1-R-H218O-A_NODE_79_length_2957_cov_7.209286",2,8,8,195,82,80,146,218,153,179,76,242,291,145,115,"Tolivirales","Tolucaviricetes","Tolivirales","Fungi"
+"T1-R-H218O-A_NODE_99_length_2804_cov_8.111233",21,10,20,332,237,320,1365,812,905,378,255,268,1365,1245,1200,"Lenarviricota","Lenarviricota","Lenarviricota","Bacteria"
+"T1-R-H218O-A_NODE_110_length_2719_cov_7.311556",38,51,37,301,400,209,94,29,52,272,343,340,86,38,45,"Norzivirales","Leviviricetes","Norzivirales","Bacteria"
+"T1-R-H218O-A_NODE_164_length_2462_cov_5.689251",8,6,9,206,186,172,1836,1127,677,1254,216,229,4358,4142,3676,"Lenarviricota","Lenarviricota","Lenarviricota","Bacteria"
+"T1-R-H218O-B_NODE_1_length_8011_cov_27.664484",8,4,11,273,3514,330,1412,190,249,207,97,318,146,19,1465,"Tymovirales","Alsuviricetes","Tymovirales",NA
+"T1-R-H218O-B_NODE_40_length_3217_cov_14.535601",10,16,10,313,113,292,335,288,530,183,361,233,840,382,483,"Lenarviricota","Lenarviricota","Lenarviricota","Bacteria"
+"T1-R-H218O-C_NODE_19_length_3476_cov_46.318649",52,50,28,1407,539,1281,1153,994,2164,1025,1498,1298,4117,1543,2180,"Lenarviricota","Lenarviricota","Lenarviricota","Bacteria"
+"T1-R-H218O-C_NODE_470_length_1890_cov_17.399120",0,0,0,0,32,540,8,3,20,8,0,0,0,10,0,"Ourlivirales","Miaviricetes","Ourlivirales",NA
+"T1-R-H218O-P-A_NODE_19_length_4137_cov_56.870389",4,4,8,131,155,198,1533,1005,705,1114,228,185,3993,4108,3122,"Lenarviricota","Lenarviricota","Lenarviricota","Bacteria"
+"T1-R-H2O-B_NODE_549_length_2024_cov_4.158730",0,0,0,0,0,0,0,0,0,21,132,0,6,0,6,"Cryppavirales","Howeltoviricetes","Cryppavirales",NA
+"T2-R-H218O-P-B_NODE_44_length_3008_cov_17.993190",12,34,21,284,152,231,525,201,280,128,196,137,288,199,231,"Tolivirales","Tolucaviricetes","Tolivirales","Fungi"
+"T3-R-H218O-P-C_NODE_28_length_3508_cov_129.514984",12,6,10,488,493,1660,748,417,345,123,80,123,231,156,236,"Pisuviricota","Pisuviricota","Pisuviricota",NA

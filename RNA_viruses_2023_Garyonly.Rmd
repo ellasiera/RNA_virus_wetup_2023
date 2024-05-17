@@ -15,20 +15,24 @@ library("vegan")
 library("RColorBrewer")
 library("ape")
 library("ggpubr")
-library("ggVennDiagram")
 library("ggpmisc")
-library("abdiv")
+library("microshades")
+library("DESeq2")
+library("EnhancedVolcano")
+library("pheatmap")
+library("dichromat")
+library("stringi")
+library("dunn.test")
 library("chemodiv")
-library("taxonomizr")
-#library("phyloseq")
 ```
 
 ## Load data
 
 ```{r votu table, echo=FALSE}
-votu <- read.delim("coverm_rpkm_breadth50_Gary.tsv", sep="\t", header=T, stringsAsFactors = F)
+votu <- read.delim("coverm_tpm_breadth50_mmseqs_Gary.tsv", sep="\t", header=T, stringsAsFactors = F)
 str(votu)
-colnames(votu) <- gsub("_sort\\.RPKM", "", colnames(votu))
+#colnames(votu) <- gsub("_sort\\.RPKM", "", colnames(votu))
+colnames(votu) <- gsub("_sort\\.TPM", "", colnames(votu))
 votus_rmv <- scan(file = "vOTUs_to_remove_unclassified.txt",what = character())
 votu <- votu %>%
   filter(!(Contig %in% votus_rmv))
@@ -36,15 +40,16 @@ votu <- votu %>%
 wetup <- votu %>% column_to_rownames("Contig")
 wetup <- wetup[rowSums(wetup) > 0,]
 # To account for T0 under both treatments (P amended and unamended), replicate the T0 values and assign once to P and once to noP
-toadd <- wetup[, 1:3]
-colnames(toadd) <- gsub("A$", "P.A", colnames(toadd))
-colnames(toadd) <- gsub("B$", "P.B", colnames(toadd))
-colnames(toadd) <- gsub("C$", "P.C", colnames(toadd))
-wetup <- data.frame(cbind(toadd, wetup))
+# toadd <- wetup[, 1:3]
+# colnames(toadd) <- gsub("A$", "P.A", colnames(toadd))
+# colnames(toadd) <- gsub("B$", "P.B", colnames(toadd))
+# colnames(toadd) <- gsub("C$", "P.C", colnames(toadd))
+# wetup <- data.frame(cbind(toadd, wetup))
 
 wetup <- t(wetup)
 
 design <- read.delim("mtx_design_Gary.txt")
+#design <- read.delim("mtx_design_Gary_2T0.txt")
 ```
 
 ## Create Permanova
@@ -57,22 +62,22 @@ adonis2(wetup~time*Phos*isotope, data=design)
 # Number of permutations: 999
 # 
 # adonis2(formula = wetup ~ time * Phos * isotope, data = design)
-#                   Df SumOfSqs      R2      F Pr(>F)
-# time               1   0.9070 0.11800 6.5940  0.001 ***
-# Phos               1   0.8090 0.10525 5.8815  0.001 ***
-# isotope            1   0.3980 0.05178 2.8932  0.003 **
-# time:Phos          1   0.2452 0.03190 1.7827  0.053 .
-# time:isotope       1   0.3709 0.04826 2.6966  0.003 **
-# Phos:isotope       1   0.1576 0.02050 1.1456  0.280
-# time:Phos:isotope  1   0.1219 0.01586 0.8860  0.492
-# Residual          34   4.6769 0.60845
-# Total             41   7.6865 1.00000
+#                   Df SumOfSqs      R2      F Pr(>F)    
+# time               1   0.5255 0.05696 2.8602  0.002 ** 
+# Phos               1   1.3685 0.14834 7.4487  0.001 ***
+# isotope            1   0.5500 0.05962 2.9936  0.002 ** 
+# time:Phos          1   0.3647 0.03953 1.9848  0.014 *  
+# time:isotope       1   0.2528 0.02741 1.3762  0.110    
+# Phos:isotope       1   0.2411 0.02614 1.3125  0.150    
+# time:Phos:isotope  1   0.2273 0.02464 1.2372  0.187    
+# Residual          31   5.6956 0.61737                  
+# Total             38   9.2257 1.00000                  
 # ---
 # Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
 
 # PERMANOVA without T0
 design_no_T0 <- design %>% filter(time>0)
-wetup_no_T0 <- wetup[-(1:6),]
+wetup_no_T0 <- wetup[-(1:3),]
 adonis2(wetup_no_T0~time*Phos*isotope, data=design_no_T0)
 # Permutation test for adonis under reduced model
 # Terms added sequentially (first to last)
@@ -81,15 +86,15 @@ adonis2(wetup_no_T0~time*Phos*isotope, data=design_no_T0)
 # 
 # adonis2(formula = wetup_no_T0 ~ time * Phos * isotope, data = design_no_T0)
 #                   Df SumOfSqs      R2      F Pr(>F)    
-# time               1   0.3089 0.05404 2.5536  0.005 ** 
-# Phos               1   0.9439 0.16510 7.8021  0.001 ***
-# isotope            1   0.4182 0.07315 3.4568  0.001 ***
-# time:Phos          1   0.2145 0.03752 1.7732  0.040 *  
-# time:isotope       1   0.1468 0.02568 1.2138  0.194    
-# Phos:isotope       1   0.1788 0.03127 1.4777  0.098 .  
-# time:Phos:isotope  1   0.1186 0.02074 0.9802  0.406    
-# Residual          28   3.3873 0.59250                  
-# Total             35   5.7170 1.00000                  
+# time               1   0.3802 0.04664 2.1474  0.009 ** 
+# Phos               1   1.2943 0.15879 7.3108  0.001 ***
+# isotope            1   0.5977 0.07333 3.3760  0.001 ***
+# time:Phos          1   0.2715 0.03331 1.5337  0.078 .  
+# time:isotope       1   0.2265 0.02779 1.2796  0.156    
+# Phos:isotope       1   0.2533 0.03108 1.4309  0.110    
+# time:Phos:isotope  1   0.1702 0.02088 0.9613  0.434    
+# Residual          28   4.9569 0.60817                  
+# Total             35   8.1506 1.00000                  
 # ---
 # Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
 
@@ -120,9 +125,18 @@ ggplot(pcoa_df, aes(x = Axis.1, y = Axis.2, label = sample, group=ellps)) +
   scale_color_manual(values=cols) +
   ggtitle('Square root transformed PCoA Ordination') +
   coord_fixed(ratio = 1) +
-  stat_ellipse() +
+  #stat_ellipse() +
   theme_bw()
-ggsave("Gary_RNA_viruses_PCoA_wetup_sqrt.pdf", width=10)
+ggsave("Gary_RNA_viruses_PCoA_wetup_sqrt_tpm.pdf", width=8)
+ggplot(pcoa_df, aes(x = Axis.1, y = Axis.2, label = sample, group=ellps)) +
+  geom_point(aes(color=grp, shape=shape_grp), size = 4) +
+  ylab(paste0('Co 2 ',eigenvalues[2],'%')) + #Extract y axis value from variance
+  xlab(paste0('Co 1 ',eigenvalues[1],'%')) + #Extract x axis value from variance
+  scale_color_manual(values=cols) +
+  ggtitle('Square root transformed PCoA Ordination') +
+  coord_fixed(ratio = 1) +
+  theme_bw()
+ggsave("Gary_RNA_viruses_PCoA_wetup_sqrt_tpm_noellipses.pdf", width=10)
 # Recalculate without T0 to see if later temporal patterns pop up
 wetup_sqrt <- wetup_sqrt[!(rownames(wetup_sqrt) %like% "T0"),]
 wetup_dist <- vegdist(wetup_sqrt, method="bray", na.rm = T)
@@ -149,49 +163,62 @@ ggplot(pcoa_df, aes(x = Axis.1, y = Axis.2, label = sample)) +
   theme_bw()
 # Nah, no epiphany here 
 ```
+
 ```{r}
 # vOTU sharing between replicates, supplemental figure
-wetup <- votu %>% column_to_rownames("Contig")
-wetup <- wetup[rowSums(wetup) > 0,]
+wetup_df <- votu %>% column_to_rownames("Contig")
+wetup_df <- wetup_df[rowSums(wetup_df) > 0,]
 wetup_df[wetup_df > 0] <- 1 # convert coverage to presence/absence
+
+sumsrel <- c()
+sumsPrel <- c()
 
 sums <- rowSums(wetup_df[, which(colnames(wetup_df) %like% "Dry.soil.[A-C]")])
 sums2 <- c(length(sums[sums==1]), length(sums[sums==2]), length(sums[sums==3]))
 sums3 <- data.frame(t(rbind(c("1", "2", "3"), sums2)))
+sumsrel <- c(sumsrel, sums2/sum(sums2))
 fig0 <- ggplot(data = sums3, aes(x = V1, y = sums2, fill = V1)) + geom_col() + scale_fill_brewer(palette = "Purples") + theme_classic() + xlab("Number of replicates") + ylab("Number of vOTUs")
 
 sums <- rowSums(wetup_df[, which(colnames(wetup_df) %like% "T1.R.H218O.P.*")])
 sums2 <- c(length(sums[sums==1]), length(sums[sums==2]), length(sums[sums==3]))
 sums3 <- data.frame(t(rbind(c("1", "2", "3"), sums2)))
+sumsPrel <- c(sumsrel, sums2/sum(sums2))
 figT1_18O_P <- ggplot(data = sums3, aes(x = V1, y = sums2, fill = V1)) + geom_col() + scale_fill_brewer(palette = "Purples") + theme_classic() + xlab("Number of replicates") + ylab("Number of vOTUs")
 sums <- rowSums(wetup_df[, which(colnames(wetup_df) %like% "T1.R.H218O.[A-C]")])
 sums2 <- c(length(sums[sums==1]), length(sums[sums==2]), length(sums[sums==3]))
 sums3 <- data.frame(t(rbind(c("1", "2", "3"), sums2)))
+sumsrel <- c(sumsrel, sums2/sum(sums2))
 figT1_18O_noP <- ggplot(data = sums3, aes(x = V1, y = sums2, fill = V1)) + geom_col() + scale_fill_brewer(palette = "Purples") + theme_classic() + xlab("Number of replicates") + ylab("Number of vOTUs")
 sums <- rowSums(wetup_df[, which(colnames(wetup_df) %like% "T1.R.H2O.P.*")])
 sums2 <- c(length(sums[sums==1]), length(sums[sums==2]), length(sums[sums==3]))
 sums3 <- data.frame(t(rbind(c("1", "2", "3"), sums2)))
+sumsPrel <- c(sumsrel, sums2/sum(sums2))
 figT1_16O_P <- ggplot(data = sums3, aes(x = V1, y = sums2, fill = V1)) + geom_col() + scale_fill_brewer(palette = "Purples") + theme_classic() + xlab("Number of replicates") + ylab("Number of vOTUs")
 sums <- rowSums(wetup_df[, which(colnames(wetup_df) %like% "T1.R.H2O.[A-C]")])
 sums2 <- c(length(sums[sums==1]), length(sums[sums==2]), length(sums[sums==3]))
 sums3 <- data.frame(t(rbind(c("1", "2", "3"), sums2)))
+sumsrel <- c(sumsrel, sums2/sum(sums2))
 figT1_16O_noP <- ggplot(data = sums3, aes(x = V1, y = sums2, fill = V1)) + geom_col() + scale_fill_brewer(palette = "Purples") + theme_classic() + xlab("Number of replicates") + ylab("Number of vOTUs")
 
 sums <- rowSums(wetup_df[, which(colnames(wetup_df) %like% "T2.R.H218O.P.*")])
 sums2 <- c(length(sums[sums==1]), length(sums[sums==2]), length(sums[sums==3]))
 sums3 <- data.frame(t(rbind(c("1", "2", "3"), sums2)))
+sumsPrel <- c(sumsrel, sums2/sum(sums2))
 figT2_18O_P <- ggplot(data = sums3, aes(x = V1, y = sums2, fill = V1)) + geom_col() + scale_fill_brewer(palette = "Purples") + theme_classic() + xlab("Number of replicates") + ylab("Number of vOTUs")
 sums <- rowSums(wetup_df[, which(colnames(wetup_df) %like% "T2.R.H218O.[A-C]")])
 sums2 <- c(length(sums[sums==1]), length(sums[sums==2]), length(sums[sums==3]))
 sums3 <- data.frame(t(rbind(c("1", "2", "3"), sums2)))
+sumsrel <- c(sumsrel, sums2/sum(sums2))
 figT2_18O_noP <- ggplot(data = sums3, aes(x = V1, y = sums2, fill = V1)) + geom_col() + scale_fill_brewer(palette = "Purples") + theme_classic() + xlab("Number of replicates") + ylab("Number of vOTUs")
 sums <- rowSums(wetup_df[, which(colnames(wetup_df) %like% "T2.R.H2O.P.*")])
 sums2 <- c(length(sums[sums==1]), length(sums[sums==2]), length(sums[sums==3]))
 sums3 <- data.frame(t(rbind(c("1", "2", "3"), sums2)))
+sumsPrel <- c(sumsrel, sums2/sum(sums2))
 figT2_16O_P <- ggplot(data = sums3, aes(x = V1, y = sums2, fill = V1)) + geom_col() + scale_fill_brewer(palette = "Purples") + theme_classic() + xlab("Number of replicates") + ylab("Number of vOTUs")
 sums <- rowSums(wetup_df[, which(colnames(wetup_df) %like% "T2.R.H2O.[A-C]")])
 sums2 <- c(length(sums[sums==1]), length(sums[sums==2]), length(sums[sums==3]))
 sums3 <- data.frame(t(rbind(c("1", "2", "3"), sums2)))
+sumsrel <- c(sumsrel, sums2/sum(sums2))
 figT2_16O_noP <- ggplot(data = sums3, aes(x = V1, y = sums2, fill = V1)) + geom_col() + scale_fill_brewer(palette = "Purples") + theme_classic() + xlab("Number of replicates") + ylab("Number of vOTUs")
 
 sums <- rowSums(wetup_df[, which(colnames(wetup_df) %like% "T3.R.H218O.P.*")])
@@ -201,14 +228,17 @@ figT3_18O_P <- ggplot(data = sums3, aes(x = V1, y = sums2, fill = V1)) + geom_co
 sums <- rowSums(wetup_df[, which(colnames(wetup_df) %like% "T3.R.H218O.[A-C]")])
 sums2 <- c(length(sums[sums==1]), length(sums[sums==2]), length(sums[sums==3]))
 sums3 <- data.frame(t(rbind(c("1", "2", "3"), sums2)))
+sumsrel <- c(sumsrel, sums2/sum(sums2))
 figT3_18O_noP <- ggplot(data = sums3, aes(x = V1, y = sums2, fill = V1)) + geom_col() + scale_fill_brewer(palette = "Purples") + theme_classic() + xlab("Number of replicates") + ylab("Number of vOTUs")
 sums <- rowSums(wetup_df[, which(colnames(wetup_df) %like% "T3.R.H2O.P.*")])
 sums2 <- c(length(sums[sums==1]), length(sums[sums==2]), length(sums[sums==3]))
 sums3 <- data.frame(t(rbind(c("1", "2", "3"), sums2)))
+sumsPrel <- c(sumsrel, sums2/sum(sums2))
 figT3_16O_P <- ggplot(data = sums3, aes(x = V1, y = sums2, fill = V1)) + geom_col() + scale_fill_brewer(palette = "Purples") + theme_classic() + xlab("Number of replicates") + ylab("Number of vOTUs")
 sums <- rowSums(wetup_df[, which(colnames(wetup_df) %like% "T3.R.H2O.[A-C]")])
 sums2 <- c(length(sums[sums==1]), length(sums[sums==2]), length(sums[sums==3]))
 sums3 <- data.frame(t(rbind(c("1", "2", "3"), sums2)))
+sumsrel <- c(sumsrel, sums2/sum(sums2))
 figT3_16O_noP <- ggplot(data = sums3, aes(x = V1, y = sums2, fill = V1)) + geom_col() + scale_fill_brewer(palette = "Purples") + theme_classic() + xlab("Number of replicates") + ylab("Number of vOTUs")
 
 ggarrange(fig0, 
@@ -216,7 +246,17 @@ ggarrange(fig0,
           ggarrange(figT2_18O_P, figT2_18O_noP, figT2_16O_P, figT2_16O_noP, nrow=1, ncol=4, common.legend = T),
           ggarrange(figT3_18O_P, figT3_18O_noP, figT3_16O_P, figT3_16O_noP, nrow=1, ncol=4, common.legend = T),
           nrow = 4)
-ggsave("fig_S1_replication_hist.pdf", width=8, height=10)
+ggsave("fig_S1_replication_hist_tpm.pdf", width=8, height=10)
+
+# As a boxplot over all time points with/without P
+sumsrel_df <- data.frame(cbind(sumsrel[c(1,4,7,10,13,16,19)], sumsrel[c(1,4,7,10,13,16,19)+1], sumsrel[c(1,4,7,10,13,16,19)+2])) %>% pivot_longer(cols = everything(), names_to = "repNum")
+sumsPrel_df <- data.frame(cbind(sumsPrel[c(1,4,7,10,13,16,19)], sumsPrel[c(1,4,7,10,13,16,19)+1], sumsPrel[c(1,4,7,10,13,16,19)+2])) %>% pivot_longer(cols = everything(), names_to = "repNum")
+p1 <- ggplot(data = sumsrel_df, aes(x = repNum, y = value)) + geom_boxplot(aes(fill = repNum)) + theme_classic() + scale_fill_brewer(palette = "Purples") + 
+  xlab("Number of replicates") + ylab("Proportion of vOTUs present in sample") + ggtitle("Unamended soil")
+p2 <- ggplot(data = sumsPrel_df, aes(x = repNum, y = value)) + geom_boxplot(aes(fill = repNum)) + theme_classic() + scale_fill_brewer(palette = "Purples") + 
+  xlab("Number of replicates") + ylab("Proportion of vOTUs present in sample") + ggtitle("Phosphate amended soil")
+ggarrange(p1, p2, common.legend = T, nrow = 1, ncol = 2)
+ggsave("sup_fig_S4_replication.pdf", width = 7)
 
 # Number of samples each vOTU appears in histogram
 wetup_df <- wetup_df %>% select(-matches("T0.*P.*"))
@@ -230,22 +270,30 @@ hist(sums, breaks=39, xlab = "Number of microcosms", ylab = "Number of vOTUs", m
 wetup <- votu %>% column_to_rownames("Contig")
 wetup <- wetup[rowSums(wetup) > 0,]
 
-tax <- read.delim("Gary_RdRp_score70_verified_RdRp.tax", sep="\t", header=F, stringsAsFactors = F)
-colnames(tax) <- c("RdRp_ID", "taxonomy", "bitscore", "Contig")
+tax <- read.delim("vOTU_final_taxonomy_by_tree.txt", sep="\t", header=F, stringsAsFactors = F)
+colnames(tax) <- c("Contig", "taxonomy")
 ictv <- read.delim("ICTV_RNA_viruses.txt", sep="\t", header=T, stringsAsFactors = F)
 tax$Class <- tax$taxonomy
 
 getOrder <- function(taxname) {
-  if ((taxname %like% "ota$") | (taxname %like% "tes$") | (taxname %like% "les$")) return(taxname) # if it's already a phylum or class name keep it as is
+  if ((taxname %like% "ota$") | (taxname %like% "tes$") | (taxname %like% "les$") | (taxname %like% "Unassigned")) return(taxname) # if it's already a phylum or class name keep it as is
   if (taxname %in% c("Zhaovirus", "Yanvirus", "Permutotetraviridae", "Ophioviridae")) return("Unassigned") # These exceptions don't have a class or phylum
   if (taxname %like% "dae$") return(unique(ictv$Order[ictv$Family == taxname]))
+  if (taxname %in% c("o.0012", "o.0014", "o.0028")) return("Pisuviricota") # New clades from Neri 2022
+  if (taxname %in% c("o.0063","o.0067")) return("Negarnaviricota") # New clades from Neri 2022
+  if (taxname %in% c("o.0036", "o.0042", "o.0050", "o.0051", "o.0435")) return("Kitrinoviricota") # New clades from Neri 2022
+  if (taxname == "o.0081") return("Lenarviricota") # New clades from Neri 2022
   else return(unique(ictv$Order[ictv$Genus == taxname]))
 }
 getClass <- function(taxname) {
-  if ((taxname %like% "ota$") | (taxname %like% "tes$")) return(taxname) # if it's already a phylum or class name keep it as is
+  if ((taxname %like% "ota$") | (taxname %like% "tes$") | (taxname %like% "Unassigned")) return(taxname) # if it's already a phylum or class name keep it as is
   if (taxname == "Levivirales") return("Leviviricetes") # Levivirales don't exist anymore so I had to define this manually
   if (taxname == "Ophioviridae") return("Milneviricetes") # Ophioviridae is a new family so I had to define this manually
   if (taxname %in% c("Zhaovirus", "Yanvirus", "Permutotetraviridae")) return("Unassigned") # These exceptions don't have a class or phylum
+  if (taxname %in% c("o.0012", "o.0014", "o.0028")) return("Pisuviricota") # New clades from Neri 2022
+  if (taxname %in% c("o.0063","o.0067")) return("Negarnaviricota") # New clades from Neri 2022
+  if (taxname %in% c("o.0036", "o.0042", "o.0050", "o.0051", "o.0435")) return("Kitrinoviricota") # New clades from Neri 2022
+  if (taxname == "o.0081") return("Lenarviricota") # New clades from Neri 2022
   if (taxname %like% "les$") return(unique(ictv$Class[ictv$Order == taxname]))
   if (taxname %like% "dae$") return(unique(ictv$Class[ictv$Family == taxname]))
   else return(unique(ictv$Class[ictv$Genus == taxname]))
@@ -254,33 +302,15 @@ getClass <- function(taxname) {
 tax$Class <- unlist(sapply(tax$taxonomy, getClass))
 tax$Order <- unlist(sapply(tax$taxonomy, getOrder))
 
-view(tax[which(duplicated(tax$Contig)),]) # Empty = No duplicates
-# If not empty run this
-remrows <- c()
-for (r in which(duplicated(tax$Contig))) {
-  ctg <- tax$Contig[r]
-  bit <- min(tax$bitscore[tax$Contig == ctg])
-  remrows <- c(remrows, which(tax$Contig == ctg & tax$bitscore == bit))
-}
-tax <- tax[-remrows,]
-
 write.csv(tax, "Order_level_tax.tsv", row.names = FALSE)
 # To load the existing table
 tax <- read.csv("Order_level_tax.tsv")
 
-tax_vOTU <- tax %>%
-  select(Contig, Class, Order, taxonomy) %>%
-  unique()
-
-wetup_tax <- wetup %>% rownames_to_column("Contig") %>% left_join(tax_vOTU, by="Contig")
+wetup_tax <- wetup %>% rownames_to_column("Contig") %>% left_join(tax, by="Contig")
 
 wetup_cols <- which(colnames(wetup_tax) %like% "^T")
 wetup <- wetup_tax %>% select(Contig, taxonomy, starts_with("T")) %>%
-  filter(rowSums(wetup_tax[,wetup_cols]) > 0, na.rm = TRUE) %>% unique() # 3330 vOTUs
-
-# Based on the PCoA I suspect the names of T3 P rep C 16O and 18O were accidentally swapped on the tubes. 
-# Swapping them here
-#wetup <- wetup %>% rename(T3.R.H218O.P.C = T3.R.H2O.P.C, T3.R.H2O.P.C = T3.R.H218O.P.C)
+  filter(rowSums(wetup_tax[,wetup_cols]) > 0, na.rm = TRUE) %>% unique() # 2190 vOTUs
 
 wetup_pvt <- wetup_tax %>% 
   remove_rownames() %>%
@@ -306,32 +336,32 @@ ggplot(data = wetup_tax_plot, aes(x = variable, y = pvt, fill=Class)) +
   xlab("Sample") + ylab("Number of vOTUs present")
 ggsave("wetup_richness_tax_bar_class.pdf")
 # Boxplot
-ggplot(data = wetup_tax_plot, aes(x = Class, y = pvt, fill=Class)) + 
+P1 <- ggplot(data = wetup_tax_plot, aes(x = Class, y = pvt, fill=Class)) + 
   geom_boxplot() + 
   scale_fill_brewer(palette = "Paired", direction = -1) + 
   theme_classic() + 
   theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1)) + 
   xlab("taxonomy") + ylab("Number of vOTUs per sample")
-ggsave("wetup_richness_tax_box_class.pdf")
+ggsave(P1, "wetup_richness_tax_box_class.pdf")
 # Relative abundance stacked barchart
 for_durna <- wetup_tax %>% 
   remove_rownames() %>%
   column_to_rownames("Contig") %>%
-  pivot_longer(cols=-c(Class, Order, taxonomy), names_to="variable", values_to="rpkm") %>%
+  pivot_longer(cols=-c(Class, Order, taxonomy), names_to="variable", values_to="tpm") %>%
   group_by(Order, variable) %>%
-  summarize_at("rpkm", sum) %>%
+  summarize_at("tpm", sum) %>%
   mutate(variable = as.character(variable)) %>%
   group_by(variable) %>%
-  mutate(pct = rpkm*100/sum(rpkm))
+  mutate(pct = tpm*100/sum(tpm))
 wetup_pct <- wetup_tax %>% 
   remove_rownames() %>%
   column_to_rownames("Contig") %>%
-  pivot_longer(cols=-c(Class, Order, taxonomy), names_to="variable", values_to="rpkm") %>%
+  pivot_longer(cols=-c(Class, Order, taxonomy), names_to="variable", values_to="tpm") %>%
   group_by(Class, variable) %>%
-  summarize_at("rpkm", sum) %>%
+  summarize_at("tpm", sum) %>%
   mutate(variable = as.character(variable)) %>%
   group_by(variable) %>%
-  mutate(pct = rpkm*100/sum(rpkm))
+  mutate(pct = tpm*100/sum(tpm))
 
 wetup_tax_plot <- wetup_pct %>% 
   mutate(Class = ifelse(Class %in% top11, Class, "Other")) %>%
@@ -348,28 +378,29 @@ ggplot(data = wetup_tax_plot, aes(x = variable, y = pct, fill=Class)) +
   theme_classic() + 
   theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1)) + 
   xlab("Sample") + ylab("Relative abundance")
-ggsave("wetup_relabun_tax_bar_class.pdf")
+ggsave("wetup_relabun_tax_bar_tpm_class.pdf")
 # Boxplot
-ggplot(data = wetup_tax_plot, aes(x = Class, y = pct, fill=Class)) + 
+P2 <- ggplot(data = wetup_tax_plot, aes(x = Class, y = pct, fill=Class)) + 
   geom_boxplot() + 
   scale_fill_brewer(palette = "Paired", direction = -1) + 
   theme_classic() + 
   theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1)) + 
   xlab("taxonomy") + ylab("Relative abundance per sample")
-ggsave("wetup_relabun_tax_box_class.pdf")
+ggsave(P2, "wetup_relabun_tax_box_tpm_class.pdf")
 
 # Is there a correlation between richness and abundance?
 temp <- wetup_pct %>% left_join(wetup_pvt, by=c("Class", "variable"))
 temp$Class[!(temp$Class %in% top11)] <- "Other"
 temp$Class <- fct_relevel(temp$Class, top11)
-ggplot(data=temp, aes(x=pvt, y=pct)) + geom_point(aes(fill=Class), colour="black",pch=21, size=2) + 
+P3 <- ggplot(data=temp, aes(x=pvt, y=pct)) + geom_point(aes(fill=Class), colour="black",pch=21, size=2) + 
   scale_fill_brewer(palette = "Paired", direction = -1) + 
-  theme_classic() +
+  theme_classic() + theme(legend.position="none") + 
   stat_poly_line(color="black") +
   stat_poly_eq(use_label(c("eq", "adj.R2", "f", "p", "n"))) +
   xlab("Number of unique vOTUs from taxonomic group")+ ylab("Relative abundance of vOTUs from taxonomic group")
 ggsave("wetup_richness_vs_abundance_class.pdf")
 ```
+
 ```{r}
 # Special vOTUs
 dry_cols <- which(colnames(wetup_tax) %like% "T0")
@@ -378,31 +409,63 @@ nop_cols <- c(which(colnames(wetup_tax) %like% "T[1-3].*O.[A-C]"))
 
 # Only in dry soil
 tmp1 <- wetup_tax[rowSums(wetup_tax[,dry_cols]) > 0 & rowSums(wetup_tax[,c(p_cols, nop_cols)]) == 0,]
-nrow(tmp1) #42
+nrow(tmp1) #31
 # Only in P amended soil
 tmp2 <- wetup_tax[rowSums(wetup_tax[,p_cols]) > 0 & rowSums(wetup_tax[,nop_cols]) == 0,]
-nrow(tmp2) #525
+nrow(tmp2) #327
 # Only in unamended soil
 tmp3 <- wetup_tax[rowSums(wetup_tax[,p_cols]) == 0 & rowSums(wetup_tax[,nop_cols]) > 0,]
-nrow(tmp3) #683
+nrow(tmp3) #438
+
+# Unify legend
+cls <- unique(c(tmp1$Class, tmp2$Class, tmp3$Class))
+phl <- read.delim("cls_to_phl.txt", sep = "\t", header = F)
+colnames(phl) <- c("Class", "Phylum")
+pal <- phl %>% group_by(Phylum) %>% tally()
+pal$palette <- c("micro_purple", "micro_orange", "micro_blue", "micro_brown", "micro_green", "micro_gray")
+cols <- c()
+for (i in 1:nrow(pal)) {
+  cols <- c(cols, microshades_palette(pal$palette[i], pal$n[i]))
+}
+phl <- phl[order(phl$Phylum),]
+phl$cols <- cols
+names(cols) <- phl$Class
 
 tmp_long <- tmp1 %>% select(starts_with("T0"), "Order", "Class") %>% pivot_longer(cols = starts_with("T0"), names_to = "sample") %>% group_by(Class) %>% summarise(total = sum(value)) %>% arrange(desc(total))
-tmp_long$Class <- fct_relevel(tmp_long$Class, tmp_long$Class)
-p1 <- ggplot(tmp_long, aes(x = 1, y=total)) + geom_bar(stat = "identity", aes(fill = Class), position = "stack") + theme_bw() + scale_fill_brewer(palette = "Paired")
+# tmp_long$Class <- fct_relevel(tmp_long$Class, tmp_long$Class)
+# p1 <- ggplot(tmp_long, aes(x = 1, y=total)) + geom_bar(stat = "identity", aes(fill = Class), position = "stack") + theme_bw() + scale_fill_manual(values = cols) + xlab("Dry soil, N=42") + ylab("Total TPM")
 
-tmp_long <- tmp2 %>% select(contains("P"), "Order", "Class") %>% pivot_longer(cols = contains("P"), names_to = "sample") %>% group_by(Class) %>% summarise(total = sum(value)) %>% arrange(desc(total))
-top11 <- tmp_long$Class[1:11]
-tmp_long$Class[!(tmp_long$Class %in% top11)] <- "Other"
-tmp_long$Class <- fct_relevel(tmp_long$Class, c(top11, "Other"))
-p2 <- ggplot(tmp_long, aes(x = 1, y=total)) + geom_bar(stat = "identity", aes(fill = Class), position = "stack") + theme_bw() + scale_fill_brewer(palette = "Paired")
+tmp_long2 <- tmp2 %>% select(contains("P"), "Order", "Class") %>% pivot_longer(cols = contains("P"), names_to = "sample") %>% group_by(Class) %>% summarise(total = sum(value)) %>% arrange(desc(total))
+# top11 <- tmp_long$Class[1:11]
+# tmp_long$Class[!(tmp_long$Class %in% top11)] <- "Other"
+# tmp_long$Class <- fct_relevel(tmp_long$Class, c(top11, "Other"))
+# p2 <- ggplot(tmp_long, aes(x = 1, y=total)) + geom_bar(stat = "identity", aes(fill = Class), position = "stack") + theme_bw() + scale_fill_manual(values = cols) + xlab("P amended soil, N=525") + ylab("Total TPM")
 
-tmp_long <- tmp3 %>% select(matches("T[1-3].*O.[A-C]"), "Order", "Class") %>% pivot_longer(cols =starts_with("T"), names_to = "sample") %>% group_by(Class) %>% summarise(total = sum(value)) %>% arrange(desc(total))
-top11 <- tmp_long$Class[1:11]
-tmp_long$Class[!(tmp_long$Class %in% top11)] <- "Other"
-tmp_long$Class <- fct_relevel(tmp_long$Class, c(top11, "Other"))
-p3 <- ggplot(tmp_long, aes(x = 1, y=total)) + geom_bar(stat = "identity", aes(fill = Class), position = "stack") + theme_bw() + scale_fill_brewer(palette = "Paired")
+tmp_long3 <- tmp3 %>% select(matches("T[1-3].*O.[A-C]"), "Order", "Class") %>% pivot_longer(cols =starts_with("T"), names_to = "sample") %>% group_by(Class) %>% summarise(total = sum(value)) %>% arrange(desc(total))
 
+tmp_long_total <- tmp_long %>% full_join(tmp_long2, by = "Class") %>% full_join(tmp_long3, by = "Class")
+colnames(tmp_long_total) <- c("Class", "DrySoil", "Phosphate", "Unamended")
+tmp_long_total <- tmp_long_total %>% pivot_longer(cols = !Class, names_to = "SampleType", values_to = "TPM") %>% replace(is.na(.), 0)
 
+ggplot(tmp_long_total, aes(x = SampleType, y=TPM)) + geom_bar(stat = "identity", aes(fill = Class)) + theme_bw() + scale_fill_manual(values = cols) + xlab("Sample Type") + ylab("Total TPM")
+ggsave("sup_fig_S5_special_vOTUs.pdf", width = 7, height = 8)
+
+# ggarrange(p1, p2, p3, ncol = 3, nrow = 1)
+# ggsave("fig_S-onlyin.pdf", width = 8.5)
+
+# vOTUs fueled by P
+tmp2_mat <- tmp2 %>% select("Contig", starts_with("T", ignore.case = FALSE)) %>% pivot_longer(cols = !Contig, names_to = "sample", values_to = "TPM") %>% mutate(time = substr(sample, 1, 2)) %>% mutate(amnd = str_detect(sample, "P")) %>% mutate(amnd = case_when(
+  amnd == TRUE ~ "P",
+  amnd == FALSE ~ "noP"
+)) %>% group_by(Contig, time, amnd) %>% summarise(TPM = sum(TPM)) %>% pivot_wider(names_from = c(time, amnd), values_from = "TPM") %>% column_to_rownames("Contig")
+cols <- colorRampPalette(brewer.pal(n = 9, name = "BrBG"))(100)
+ann <- tmp2_mat %>% rownames_to_column("Contig") %>% left_join(tax) %>% left_join(hosts) %>% select(Contig, Class, host) %>% column_to_rownames("Contig") %>% mutate(Class = factor(Class), host = factor(host))
+ann_colors = list(
+    host = c(Bacteria = "#6fa8dc", Invertebrates = "#ffe599", Plants = "#b6d7a8", Fungi = "#ea9999", Eukaryotes = "#bcbcbc"),
+    Class = c(Howeltoviricetes = "#FFFF99", Leviviricetes = "#6A3D9A", Lenarviricota = "#CAB2D6", Miaviricetes = "#FF7F00", Amabiliviricetes = "#FDBF6F", Tolucaviricetes = "#E31A1C", Duplopiviricetes = "#FB9A99", Alsuviricetes = "#33A02C", Kitrinoviricota = "#B2DF8A", Ellioviricetes = "#1F78B4", Pisoniviricetes = "#A6CEE3", Chunqiuviricetes = "#B15928", Chrymotiviricetes = "black", Unassigned = "#bcbcbc", Magsaviricetes = "purple", Stelpaviricetes = "yellow", Negarnaviricota = "navy", Pisuviricota = "cyan", Insthoviricetes = "lavender")
+)
+
+pheatmap(tmp2_mat, color = cols, scale = "row", cluster_row = TRUE, cluster_cols = FALSE, legend = TRUE, show_rownames = FALSE, width = 8, na_col = "white", annotation_row = ann, annotation_colors = ann_colors, filename = "Pvotus_heatmap.pdf")
 ```
 
 ```{r}
@@ -410,11 +473,11 @@ p3 <- ggplot(tmp_long, aes(x = 1, y=total)) + geom_bar(stat = "identity", aes(fi
 temp <- wetup_tax %>% filter(Class %like% "Levivi") %>%
   column_to_rownames("Contig") %>%
   select(starts_with("T", ignore.case = FALSE))
-toadd <- temp[, 1:3]
-colnames(toadd) <- gsub("A$", "P.A", colnames(toadd))
-colnames(toadd) <- gsub("B$", "P.B", colnames(toadd))
-colnames(toadd) <- gsub("C$", "P.C", colnames(toadd))
-temp <- data.frame(cbind(toadd, temp))
+# toadd <- temp[, 1:3]
+# colnames(toadd) <- gsub("A$", "P.A", colnames(toadd))
+# colnames(toadd) <- gsub("B$", "P.B", colnames(toadd))
+# colnames(toadd) <- gsub("C$", "P.C", colnames(toadd))
+# temp <- data.frame(cbind(toadd, temp))
 tempt <- data.frame(t(temp))
 adonis2(tempt~time*Phos, data=design)
 
@@ -423,18 +486,19 @@ adonis2(tempt~time*Phos, data=design)
 # Permutation: free
 # Number of permutations: 999
 # 
-# adonis2(formula = tempt ~ time * Phos, data = design_temp)
+# adonis2(formula = tempt ~ time * Phos, data = design)
 #           Df SumOfSqs      R2       F Pr(>F)    
-# time       1   0.9197 0.12839  7.2891  0.001 ***
-# Phos       1   1.2675 0.17694 10.0457  0.001 ***
-# time:Phos  1   0.1815 0.02534  1.4388  0.157    
-# Residual  38   4.7947 0.66932                   
-# Total     41   7.1634 1.00000                   
+# time       1   0.4931 0.05864  3.0237  0.001 ***
+# Phos       1   1.9369 0.23036 11.8778  0.001 ***
+# time:Phos  1   0.2709 0.03221  1.6610  0.058 .  
+# Residual  35   5.7074 0.67879                   
+# Total     38   8.4082 1.00000                    
 # ---
 # Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
 
 
 ```
+
 ```{r}
 # Histogram of number of samples per vOTU
 temp <- wetup_tax %>% select(-Order) %>%
@@ -452,7 +516,7 @@ temp <- wetup_tax %>% select(-Order) %>%
 
 ggplot(data=temp, aes(fill=Class, x = count)) + geom_histogram(stat="bin", binwidth = 1) + 
   scale_fill_brewer(palette="Paired", direction=-1) + theme_classic() + xlab("Number of samples") + ylab("Number of vOTUs")
-ggsave("vOTUs_shared_hist.pdf", width=9)
+ggsave("vOTUs_shared_hist.pdf", width=8.5, height = 11)
 
 # Taxonomic profiles of vOTUs shared over X samples
 temp_dis <- temp %>%
@@ -463,28 +527,21 @@ temp_dis <- temp %>%
 for (c in 1:39) {
   temp_dis$rank[temp_dis$count == c] <- 1:nrow(temp_dis[temp_dis$count == c,])
 }
-  
+temp_dis_for_cols <- temp_dis %>% group_by(Class) %>% summarise(mean_rank = mean(rank)) %>% arrange(by = mean_rank)
+temp_dis$Class <- factor(temp_dis$Class, levels = temp_dis_for_cols$Class)
+
+cols <- c(Howeltoviricetes = "#FFFF99", Leviviricetes = "#6A3D9A", Lenarviricota = "#CAB2D6", Miaviricetes = "#FF7F00", Amabiliviricetes = "#FDBF6F", Tolucaviricetes = "#E31A1C", Duplopiviricetes = "#FB9A99", Alsuviricetes = "#33A02C", Kitrinoviricota = "#B2DF8A", Ellioviricetes = "#1F78B4", Pisoniviricetes = "#A6CEE3", Chunqiuviricetes = "#B15928", Chrymotiviricetes = "black", Unassigned = "#bcbcbc", Magsaviricetes = "purple", Stelpaviricetes = "yellow", Negarnaviricota = "navy", Pisuviricota = "cyan", Insthoviricetes = "lavender")
+
 ggplot(data=temp_dis, aes(x = Class, y = rank, fill = Class)) + 
   theme_classic() + geom_boxplot() + xlab("Phylum") +  ylab("Rank") + 
-  scale_fill_brewer(palette = "Paired", direction = -1) +
+  scale_fill_manual(values = cols) +
   theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
-ggsave("sup_fig_phylum_mean_rankabun.pdf")  
+ggsave("sup_fig_class_mean_rankabun.pdf", width=8.5, height = 11)  
 ```
 
 ```{r}
 # Compare phylum level distributions
-tax <- read.csv("Phylum_level_tax.tsv")
-
-tax_vOTU <- tax %>%
-  select(Contig, Phylum) %>%
-  unique()
-
-wetup <- votu %>% column_to_rownames("Contig")
-wetup <- wetup[rowSums(wetup) > 0,]
-wetup <- t(wetup)
-
-wetup_tax <- t(wetup) %>% data.frame %>% rownames_to_column("Contig") %>% left_join(tax_vOTU, by="Contig")
-wetup_tax$taxonomy <- wetup_tax$Phylum
+ictv <- read.delim("ICTV_RNA_viruses.txt", sep="\t", header=T, stringsAsFactors = F)
 
 getPhylum <- function(taxname) {
   if (taxname %like% "ota$") return(taxname) # if it's already a phylum or class name keep it as is
@@ -495,41 +552,44 @@ getPhylum <- function(taxname) {
   if (taxname %like% "les$") return(unique(ictv$Phylum[ictv$Order == taxname]))
   if (taxname %like% "dae$") return(unique(ictv$Phylum[ictv$Family == taxname]))
   else return(taxname)
-  #else return(unique(ictv$Phylum[ictv$Genus == taxname]))
 }
 
-wetup_tax$Phylum <- unlist(sapply(wetup_tax$taxonomy, getPhylum))
+wetup_tax$Phylum <- unlist(sapply(wetup_tax$Class, getPhylum))
 
 # Convert numbers to percentages
 wetup_pct <- wetup_tax %>% 
   remove_rownames() %>%
   column_to_rownames("Contig") %>%
-  pivot_longer(cols=-c(Phylum, taxonomy), names_to="variable", values_to="rpkm") %>%
+  pivot_longer(cols=-c(Phylum, Class, Order), names_to="variable", values_to="tpm") %>%
   group_by(Phylum, variable) %>%
-  summarize_at("rpkm", sum) %>%
+  summarize_at("tpm", sum) %>%
   mutate(variable = as.character(variable)) %>%
   group_by(variable) %>%
-  mutate(pct = rpkm*100/sum(rpkm)) %>%
+  mutate(pct = tpm*100/sum(tpm)) %>%
   mutate(Phylum = factor(Phylum))
 
 # Plot mean abundance by phylum
 wetup_pct <- wetup_tax %>% 
   remove_rownames() %>%
   column_to_rownames("Contig") %>%
-  pivot_longer(cols=-c(Phylum, taxonomy), names_to="variable", values_to="rpkm") %>%
+  pivot_longer(cols=-c(Phylum, Class, Order), names_to="variable", values_to="tpm") %>%
   group_by(Phylum, variable) %>%
-  summarize_at("rpkm", sum) %>%
+  summarize_at("tpm", sum) %>%
   mutate(variable = as.character(variable)) %>%
   group_by(variable) %>%
-  mutate(pct = rpkm*100/sum(rpkm))
+  mutate(pct = tpm*100/sum(tpm))
 
-ggplot(data = wetup_pct, aes(x = Phylum, y = pct, fill=Phylum)) + 
+P4 <- ggplot(data = wetup_pct, aes(x = Phylum, y = pct, fill=Phylum)) + 
   geom_boxplot() + 
   scale_fill_brewer(palette = "Pastel2", direction = -1) + 
   theme_classic() + 
   theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1)) + 
   xlab("taxonomy") + ylab("Relative abundance per sample")
-ggsave("wetup_relabun_tax_box_phylum.pdf")
+ggsave(P4, "wetup_relabun_tax_box_phylum.pdf")
+
+# Figure 3
+ggarrange(P4, P1, P3, P2, ncol = 2, nrow = 2)
+ggsave("Fig_3_taxonomy.pdf", width = 8, height = 8)
 
 # Plot temporal abundance by phylum
 # Mean and SE by Phylum
@@ -546,38 +606,37 @@ mean_ses <- wetup_pct %>%
 
 ggplot(mean_ses, aes(x = pct_mean, y = sd_div_mean)) + geom_point() + scale_x_continuous(trans='log2') +
   geom_smooth(method = lm) + stat_regline_equation(formula = y ~ x) + stat_cor(label.y=-0.1) + theme_classic()
-# sd becomes a smaller % of the mean as the mean grows - not a great correlation
+# sd becomes a smaller % of the mean as the mean grows
 
 # Temporal dynamics by phylum for viruses
-df <- wetup_tax %>% left_join(hosts, by="Contig")
-df <- df %>% column_to_rownames("Contig") %>% pivot_longer(cols=starts_with("T", ignore.case = FALSE), names_to = "sample", values_to = "rpkm") %>%
+df <- wetup_tax %>% column_to_rownames("Contig") %>% pivot_longer(cols=starts_with("T", ignore.case = FALSE), names_to = "sample", values_to = "tpm") %>%
   mutate(time = gsub("T", "", gsub("\\..*", "", sample))) %>%
   mutate(amend = case_when(
     sample %like% "P" ~ "P",
     .default = "noP"
   )) %>%
   mutate(replicate = gsub("T.*\\.", "", sample))
-wP <- df %>% filter(amend == "P" | time == 0) %>% group_by(Phylum, time, amend, replicate) %>% summarise(rpkm_sum = sum(rpkm)) %>% 
-  group_by(Phylum, time, amend) %>% summarise(rpkm_mean = mean(rpkm_sum), sd = sd(rpkm_sum)) %>%
+wP <- df %>% filter(amend == "P" | time == 0) %>% group_by(Phylum, time, amend, replicate) %>% summarise(tpm_sum = sum(tpm)) %>% 
+  group_by(Phylum, time, amend) %>% summarise(tpm_mean = mean(tpm_sum), sd = sd(tpm_sum)) %>%
   mutate(Phylum = factor(Phylum, levels = c("Lenarviricota", "Kitrinoviricota", "Negarnaviricota", "Duplornaviricota", "Pisuviricota")))
-woP <- df %>% filter(amend == "noP") %>% group_by(Phylum, time, amend, replicate) %>% summarise(rpkm_sum = sum(rpkm)) %>% 
-  group_by(Phylum, time, amend) %>% summarise(rpkm_mean = mean(rpkm_sum), sd = sd(rpkm_sum)) %>%
+woP <- df %>% filter(amend == "noP") %>% group_by(Phylum, time, amend, replicate) %>% summarise(tpm_sum = sum(tpm)) %>% 
+  group_by(Phylum, time, amend) %>% summarise(tpm_mean = mean(tpm_sum), sd = sd(tpm_sum)) %>%
   mutate(Phylum = factor(Phylum, levels = c("Lenarviricota", "Kitrinoviricota", "Negarnaviricota", "Duplornaviricota", "Pisuviricota")))
 
 pal <- rev(brewer.pal(6, "Blues"))
-PP <- ggplot(data=wP, aes(x=time, y=rpkm_mean, colour=Phylum, group=Phylum)) +
+PP <- ggplot(data=wP, aes(x=time, y=tpm_mean, colour=Phylum, group=Phylum)) +
   geom_line() + scale_colour_manual(values = pal) +
   theme_bw() + ggtitle("P amended") +
-  xlab("Time (weeks)") + ylab("Cummulative RPKM") + 
-  geom_errorbar(aes(ymin=rpkm_mean-sd, ymax=rpkm_mean+sd), width=0.1)
-PnoP <- ggplot(data=woP, aes(x=time, y=rpkm_mean, colour=Phylum, group=Phylum)) +
+  xlab("Time (weeks)") + ylab("Cummulative TPM") + 
+  geom_errorbar(aes(ymin=tpm_mean-sd, ymax=tpm_mean+sd), width=0.1)
+PnoP <- ggplot(data=woP, aes(x=time, y=tpm_mean, colour=Phylum, group=Phylum)) +
   geom_line() + scale_colour_manual(values = pal) +
   theme_bw() + ggtitle("Unamended") +
-  xlab("Time (weeks)") + ylab("Cummulative RPKM") + 
-  geom_errorbar(aes(ymin=rpkm_mean-sd, ymax=rpkm_mean+sd), width=0.1)
+  xlab("Time (weeks)") + ylab("Cummulative TPM") + 
+  geom_errorbar(aes(ymin=tpm_mean-sd, ymax=tpm_mean+sd), width=0.1) + ylim(0, 1000000)
 ggarrange(PP, PnoP, nrow=1, ncol=2, common.legend = TRUE)
-ggsave("rpkm_sum_byphylum_line.pdf", width = 8, height = 4)
-rpkm_wohost <- sum(df$rpkm)
+ggsave("tpm_sum_byphylum_line.pdf", width = 8, height = 4)
+tpm_wohost <- sum(df$tpm)
 
 l_R <- list()
 l_p <- list()
@@ -594,14 +653,25 @@ for (i in 1:5) {
   l_R[[i]] <- templ$R2
   l_p[[i]] <- templ$`Pr(>F)`
 }
-# correct p values for multiple comparisons (3 per class * 10 classes)
-getsig <- function (x) {p.adjust(x, method="fdr", n=30)}
+# correct p values for multiple comparisons (3 per phylum * 5 phylum)
+getsig <- function (x) {p.adjust(x, method="fdr", n=15)}
 l_p <- lapply(l_p, getsig)
 getsig <- function (x) {which(x <= 0.05)}
 sigp <- lapply(l_p, getsig) # get indices of significant effects per phylum
 sigR <- map2(l_R, sigp, `[`) # get R^2 values of these effects
-# dsDNA: Duplorna unaffected, Pisu affected by all. ssRNA+: Lenar by time and P, Kitrino by all. ssRNA-: Negarna by time.
+# dsDNA: Duplorna unaffected, Pisu affected by P and time (6%, 5%). ssRNA+: Lenar by P and time (6%, 17%), Kitrino unaffected. ssRNA-: Negarna by P (10%).
+
+# Is the TPM increase in Lenar significant?
+temp <- wetup_tax %>% filter(Phylum %like% "Lenar") %>% select(!c("Phylum", "taxonomy")) %>% column_to_rownames("Contig") %>% pivot_longer(cols = everything(), names_to = "sample") %>% mutate(amnd = case_when(
+  str_detect(sample, "P") ~ "P",
+  .default = "noP"
+)) %>% mutate(time_point = gsub("T", "", gsub("\\..*", "", sample))) %>% mutate(repl = gsub(".*\\.", "", sample)) %>% group_by(time_point, amnd, repl) %>% summarise(tpm = sum(value))
+temp_P <- temp %>% filter(time_point == "0" | amnd == "P")
+temp_noP <- temp %>% filter(amnd == "noP")
+dunn.test(temp_P$tpm, temp_P$time_point, alpha = 0.1, method = "bh") # T0 to T2
+dunn.test(temp_noP$tpm, temp_noP$time_point, alpha = 0.1, method = "bh") # T0 to T2
 ```
+
 ```{r}
 # Host prediction
 hosts <- read.delim(file = "Trees/votus_w_host_assignment_uniq.txt", sep=" ", header=F)
@@ -611,189 +681,138 @@ for_pie <- hosts %>% group_by(host) %>% tally() %>% arrange(desc(n)) %>% mutate(
 # names(for_pie_n) <- rownames(for_pie)
 # pie(for_pie_n, col = brewer.pal(length(for_pie_n), "Pastel2"))
 ggplot(data=for_pie, aes(x = host, y=n, fill=host)) + geom_col(position = "stack") + theme_classic() + 
-  scale_fill_brewer(palette = "Pastel1")
+  scale_fill_brewer(palette = "Pastel1") + ylab("Number of vOTUs with assigned host group") + xlab("Host group")
+ggsave("RNA_virs_host_dist.pdf")
 
 # Temporal dynamics by phylum for viruses with an assigned host
 wetup <- votu %>% column_to_rownames("Contig")
 wetup <- wetup[rowSums(wetup) > 0,]
-wetup <- t(wetup)
 
 df <- wetup_tax %>% left_join(hosts, by="Contig") %>% filter(!is.na(host))
-df <- df %>% column_to_rownames("Contig") %>% pivot_longer(cols=starts_with("T", ignore.case = FALSE), names_to = "sample", values_to = "rpkm") %>%
+df <- df %>% column_to_rownames("Contig") %>% pivot_longer(cols=starts_with("T", ignore.case = FALSE), names_to = "sample", values_to = "tpm") %>%
   mutate(time = gsub("T", "", gsub("\\..*", "", sample))) %>%
   mutate(amend = case_when(
     sample %like% "P" ~ "P",
     .default = "noP"
   )) %>%
   mutate(replicate = gsub("T.*\\.", "", sample))
-rpkm_hosts <- sum(df$rpkm)
-wP <- df %>% filter(amend == "P" | time == 0) %>% group_by(Phylum, time, amend, replicate) %>% summarise(rpkm_sum = sum(rpkm)) %>% 
-  group_by(Phylum, time, amend) %>% summarise(rpkm_mean = mean(rpkm_sum), sd = sd(rpkm_sum)) %>%
+tpm_hosts <- sum(df$tpm)
+wP <- df %>% filter(amend == "P" | time == 0) %>% group_by(Phylum, time, amend, replicate) %>% summarise(tpm_sum = sum(tpm)) %>% 
+  group_by(Phylum, time, amend) %>% summarise(tpm_mean = mean(tpm_sum), sd = sd(tpm_sum)) %>%
   mutate(Phylum = factor(Phylum, levels = c("Lenarviricota", "Kitrinoviricota", "Negarnaviricota", "Duplornaviricota", "Pisuviricota")))
-woP <- df %>% filter(amend == "noP") %>% group_by(Phylum, time, amend, replicate) %>% summarise(rpkm_sum = sum(rpkm)) %>% 
-  group_by(Phylum, time, amend) %>% summarise(rpkm_mean = mean(rpkm_sum), sd = sd(rpkm_sum)) %>%
+woP <- df %>% filter(amend == "noP") %>% group_by(Phylum, time, amend, replicate) %>% summarise(tpm_sum = sum(tpm)) %>% 
+  group_by(Phylum, time, amend) %>% summarise(tpm_mean = mean(tpm_sum), sd = sd(tpm_sum)) %>%
   mutate(Phylum = factor(Phylum, levels = c("Lenarviricota", "Kitrinoviricota", "Negarnaviricota", "Duplornaviricota", "Pisuviricota")))
 
 pal <- rev(brewer.pal(6, "Blues"))
-PP <- ggplot(data=wP, aes(x=time, y=rpkm_mean, colour=Phylum, group=Phylum)) +
+PP <- ggplot(data=wP, aes(x=time, y=tpm_mean, colour=Phylum, group=Phylum)) +
   geom_line() + scale_colour_manual(values = pal) +
   theme_bw() + ggtitle("P amended") +
-  xlab("Time (weeks)") + ylab("Cummulative RPKM") + 
-  geom_errorbar(aes(ymin=rpkm_mean-sd, ymax=rpkm_mean+sd), width=0.1)
-PnoP <- ggplot(data=woP, aes(x=time, y=rpkm_mean, colour=Phylum, group=Phylum)) +
+  xlab("Time (weeks)") + ylab("Cummulative TPM") +  ylim(c(0, 1000000)) +
+  geom_errorbar(aes(ymin=tpm_mean-sd, ymax=tpm_mean+sd), width=0.1)
+PnoP <- ggplot(data=woP, aes(x=time, y=tpm_mean, colour=Phylum, group=Phylum)) +
   geom_line() + scale_colour_manual(values = pal) +
-  theme_bw() + ggtitle("Unamended") + ylim(c(0, 600000)) +
-  xlab("Time (weeks)") + ylab("Cummulative RPKM") + 
-  geom_errorbar(aes(ymin=rpkm_mean-sd, ymax=rpkm_mean+sd), width=0.1)
+  theme_bw() + ggtitle("Unamended") + ylim(c(0, 1000000)) +
+  xlab("Time (weeks)") + ylab("Cummulative TPM") + 
+  geom_errorbar(aes(ymin=tpm_mean-sd, ymax=tpm_mean+sd), width=0.1)
 ggarrange(PP, PnoP, nrow=1, ncol=2, common.legend = TRUE)
-ggsave("rpkm_sum_byphylum_line.pdf", width = 8, height = 4)
+ggsave("tpm_sum_byphylum_line.pdf", width = 8, height = 4)
 
+# Is the increase in Lenar over time significant?
+wP <- df %>% filter(amend == "P" | time == 0) %>% group_by(Phylum, time, amend, replicate) %>% summarise(tpm_sum = sum(tpm)) %>% filter(Phylum %like% "Lenar")
+woP <- df %>% filter(amend == "noP") %>% group_by(Phylum, time, amend, replicate) %>% summarise(tpm_sum = sum(tpm)) %>% filter(Phylum %like% "Lenar")
+dunn.test(wP$tpm_sum, wP$time, method = "bh", alpha = 0.1) # T0 lower than T2 and T3
+dunn.test(woP$tpm_sum, woP$time, method = "bh", alpha = 0.1) # T0 lower than T1
+
+# Without Lenarviricota
 pal <- rev(brewer.pal(5, "Blues"))
 temp_wP <- wP %>% filter(!(Phylum %like% "Lenar"))
 temp_woP <- woP %>% filter(!(Phylum %like% "Lenar"))
-PP <- ggplot(data=temp_wP, aes(x=time, y=rpkm_mean, colour=Phylum, group=Phylum)) +
+PP <- ggplot(data=temp_wP, aes(x=time, y=tpm_mean, colour=Phylum, group=Phylum)) +
   geom_line() + scale_colour_manual(values = pal) +
   theme_bw() + ggtitle("P amended") +
-  xlab("Time (weeks)") + ylab("Cummulative RPKM") + 
-  geom_errorbar(aes(ymin=rpkm_mean-sd, ymax=rpkm_mean+sd), width=0.1)
-PnoP <- ggplot(data=temp_woP, aes(x=time, y=rpkm_mean, colour=Phylum, group=Phylum)) +
+  xlab("Time (weeks)") + ylab("Cummulative TPM") + ylim(0, 100000) +
+  geom_errorbar(aes(ymin=tpm_mean-sd, ymax=tpm_mean+sd), width=0.1)
+PnoP <- ggplot(data=temp_woP, aes(x=time, y=tpm_mean, colour=Phylum, group=Phylum)) +
   geom_line() + scale_colour_manual(values = pal) +
   theme_bw() + ggtitle("Unamended") +
-  xlab("Time (weeks)") + ylab("Cummulative RPKM") + 
-  geom_errorbar(aes(ymin=rpkm_mean-sd, ymax=rpkm_mean+sd), width=0.1)
+  xlab("Time (weeks)") + ylab("Cummulative TPM") + ylim(0, 100000) +
+  geom_errorbar(aes(ymin=tpm_mean-sd, ymax=tpm_mean+sd), width=0.1)
 ggarrange(PP, PnoP, nrow=1, ncol=2, common.legend = TRUE)
-ggsave("rpkm_sum_byhost_nolenar_line.pdf", width = 8, height = 4)
+ggsave("tpm_sum_byhost_nolenar_line.pdf", width = 8, height = 4)
 
 # Temporal dynamics by host
 df <- wetup_tax %>% left_join(hosts, by="Contig") %>% filter(!is.na(host))
-df <- df %>% column_to_rownames("Contig") %>% pivot_longer(cols=starts_with("T", ignore.case = FALSE), names_to = "sample", values_to = "rpkm") %>%
+df <- df %>% column_to_rownames("Contig") %>% pivot_longer(cols=starts_with("T", ignore.case = FALSE), names_to = "sample", values_to = "tpm") %>%
   mutate(time = gsub("T", "", gsub("\\..*", "", sample))) %>%
   mutate(amend = case_when(
     sample %like% "P" ~ "P",
     .default = "noP"
   )) %>%
   mutate(replicate = gsub("T.*\\.", "", sample))
-wP <- df %>% filter(amend == "P" | time == 0) %>% group_by(host, time, amend, replicate) %>% summarise(rpkm_sum = sum(rpkm)) %>% 
-  group_by(host, time, amend) %>% summarise(rpkm_mean = mean(rpkm_sum), sd = sd(rpkm_sum))
-woP <- df %>% filter(amend == "noP") %>% group_by(host, time, amend, replicate) %>% summarise(rpkm_sum = sum(rpkm)) %>% 
-  group_by(host, time, amend) %>% summarise(rpkm_mean = mean(rpkm_sum), sd = sd(rpkm_sum))
+wP <- df %>% filter(amend == "P" | time == 0) %>% group_by(host, time, amend, replicate) %>% summarise(tpm_sum = sum(tpm)) %>% 
+  group_by(host, time, amend) %>% summarise(tpm_mean = mean(tpm_sum), sd = sd(tpm_sum))
+woP <- df %>% filter(amend == "noP") %>% group_by(host, time, amend, replicate) %>% summarise(tpm_sum = sum(tpm)) %>% 
+  group_by(host, time, amend) %>% summarise(tpm_mean = mean(tpm_sum), sd = sd(tpm_sum))
 
-pal <- rev(brewer.pal(10, "Paired"))
-HP <- ggplot(data=wP, aes(x=time, y=rpkm_mean, colour=host, group=host)) +
+pal <- c(Bacteria = "#6fa8dc", Fungi = "#ea9999", Invertebrates = "#ffe599", Sauria = "#8e7cc3", Mammals = "#783f04", Plants = "#b6d7a8", Other = "#bcbcbc")
+HP <- ggplot(data=wP, aes(x=time, y=tpm_mean, colour=host, group=host)) +
   geom_line() + scale_colour_manual(values = pal) +
   theme_bw() + ggtitle("P amended") +
-  xlab("Time (weeks)") + ylab("Cummulative RPKM") + 
-  geom_errorbar(aes(ymin=rpkm_mean-sd, ymax=rpkm_mean+sd), width=0.1)
-HnoP <- ggplot(data=woP, aes(x=time, y=rpkm_mean, colour=host, group=host)) +
+  xlab("Time (weeks)") + ylab("Cummulative TPM") + ylim(c(0, 1000000)) +
+  geom_errorbar(aes(ymin=tpm_mean-sd, ymax=tpm_mean+sd), width=0.1)
+HnoP <- ggplot(data=woP, aes(x=time, y=tpm_mean, colour=host, group=host)) +
   geom_line() + scale_colour_manual(values = pal) +
-  theme_bw() + ggtitle("Unamended") + ylim(c(0, 600000)) +
-  xlab("Time (weeks)") + ylab("Cummulative RPKM") + 
-  geom_errorbar(aes(ymin=rpkm_mean-sd, ymax=rpkm_mean+sd), width=0.1)
-ggarrange(PP, PnoP, HP, HnoP, nrow=2, ncol=2, common.legend = TRUE)
-ggsave("rpkm_sum_byhost_line.pdf", width = 8, height = 4)
+  theme_bw() + ggtitle("Unamended") + ylim(c(0, 1000000)) +
+  xlab("Time (weeks)") + ylab("Cummulative TPM") + 
+  geom_errorbar(aes(ymin=tpm_mean-sd, ymax=tpm_mean+sd), width=0.1)
+ggarrange(PP, PnoP, HP, HnoP, nrow=2, ncol=2)
+ggsave("tpm_sum_byhost_line.pdf", width = 8, height = 8)
 
-pal <- rev(brewer.pal(9, "Paired"))
+pal <- c(Bacteria = "#6fa8dc", Fungi = "#ea9999", Invertebrates = "#ffe599", Sauria = "#8e7cc3", Mammals = "#783f04", Plants = "#b6d7a8", Other = "#bcbcbc")
 temp_wP <- wP %>% filter(!(host %like% "Bacteria"))
 temp_woP <- woP %>% filter(!(host %like% "Bacteria"))
-PP <- ggplot(data=temp_wP, aes(x=time, y=rpkm_mean, colour=host, group=host)) +
+PP <- ggplot(data=temp_wP, aes(x=time, y=tpm_mean, colour=host, group=host)) +
   geom_line() + scale_colour_manual(values = pal) +
-  theme_bw() + ggtitle("P amended") +
-  xlab("Time (weeks)") + ylab("Cummulative RPKM") + 
-  geom_errorbar(aes(ymin=rpkm_mean-sd, ymax=rpkm_mean+sd), width=0.1)
-PnoP <- ggplot(data=temp_woP, aes(x=time, y=rpkm_mean, colour=host, group=host)) +
+  theme_bw() + ggtitle("P amended") + ylim(0, 160000) +
+  xlab("Time (weeks)") + ylab("Cummulative TPM") + 
+  geom_errorbar(aes(ymin=tpm_mean-sd, ymax=tpm_mean+sd), width=0.1)
+PnoP <- ggplot(data=temp_woP, aes(x=time, y=tpm_mean, colour=host, group=host)) +
   geom_line() + scale_colour_manual(values = pal) +
-  theme_bw() + ggtitle("Unamended") +
-  xlab("Time (weeks)") + ylab("Cummulative RPKM") + 
-  geom_errorbar(aes(ymin=rpkm_mean-sd, ymax=rpkm_mean+sd), width=0.1)
+  theme_bw() + ggtitle("Unamended") + ylim(0, 160000) +
+  xlab("Time (weeks)") + ylab("Cummulative TPM") + 
+  geom_errorbar(aes(ymin=tpm_mean-sd, ymax=tpm_mean+sd), width=0.1)
 ggarrange(PP, PnoP, nrow=1, ncol=2, common.legend = TRUE)
-ggsave("rpkm_sum_byhost_nophages_line.pdf", width = 8, height = 4)
+ggsave("tpm_sum_byhost_nophages_line.pdf", width = 8, height = 4)
 
 # Looks like there's high similarity between phylum level dynamics and dynamics of viruses with known hosts:
 # Lenarviricota and phages
 # Kitrinoviricota and fungal viruses
-sum(df$rpkm[(df$host=="Bacteria")]) / sum(df$rpkm) # 87% of rpkm maps to phages
-sum(df$rpkm[(df$host=="Bacteria") & (df$Phylum=="Lenarviricota")]) / sum(df$rpkm) # 85% of rpkm maps to Lenar phages
-sum(df$rpkm[(df$host=="Fungi")]) / sum(df$rpkm) # 11.4% of rpkm maps to fungal viruses
-sum(df$rpkm[(df$host=="Fungi") & (df$Phylum=="Kitrinoviricota")]) / sum(df$rpkm) # 8% of rpkm maps to Kitrino fungal viruses
+sum(df$tpm[(df$host=="Bacteria")]) / sum(df$tpm) # 85% of tpm of vOTUs with assigned host maps to phages
+sum(df$tpm[(df$host=="Bacteria") & (df$Phylum=="Lenarviricota")]) / sum(df$tpm) # 83% of tpm of vOTUs with assigned host maps to Lenar phages
+sum(df$tpm[(df$host=="Fungi")]) / sum(df$tpm) # 12.4% of tpm of vOTUs with assigned host maps to fungal viruses
+sum(df$tpm[(df$host=="Fungi") & (df$Phylum=="Kitrinoviricota")]) / sum(df$tpm) # 10% of tpm of vOTUs with assigned host maps to Kitrino fungal viruses
 
-# The rpkm of viruses with hosts is 43% of rpkm of total viruses with assigned phylum
-rpkm_hosts / rpkm_wohost # 0.4277
+# The tpm of viruses with hosts is 46% of tpm of total viruses with assigned phylum
+tpm_hosts / tpm_wohost # 0.462
 
-df2 <- df %>% select(host, Phylum, rpkm) %>% 
-  mutate(rpkm = round(rpkm, digits = 0)) %>%
-  pivot_wider(names_from = host, values_from = rpkm, values_fn = sum)
+df2 <- df %>% select(host, Phylum, tpm) %>% 
+  mutate(tpm = round(tpm, digits = 0)) %>%
+  pivot_wider(names_from = host, values_from = tpm, values_fn = sum)
 df2[is.na(df2)] <- 0
-```
-```{r}
-# Plot median abundance over time per phylum to add error bars
-for (p in names(cols)) {
-temp <- wetup_P_pers_melt_16 %>% filter(Phylum %like% p)
-titl <- paste0(p, "median abundance with P addition 16O-water")
-p16_P <- ggplot(temp, aes(x=time, y=RPKM, group=Phylum, color=Phylum)) + geom_line() + theme_bw() +
-  scale_color_manual(values = cols) + ylab("log10 RPKM") + 
-  ggtitle(titl) + xlab("Time (weeks)") + 
-  theme(legend.position = "none") +
-  geom_point() +
-  geom_errorbar(aes(ymin=RPKM-SD, ymax=RPKM+SD), width=.2,
-                 position=position_dodge(0.1))
-temp <- wetup_P_pers_melt_18 %>% filter(Phylum %like% p)
-titl <- paste0(p, "median abundance with P addition 18O-water")
-p18_P <- ggplot(temp, aes(x=time, y=RPKM, group=Phylum, color=Phylum)) + geom_line() + theme_bw() +
-  scale_color_manual(values = cols) + ylab("log10 RPKM") + 
-  ggtitle(titl) + xlab("Time (weeks)") + 
-  theme(legend.position = "none") +
-  geom_point() +
-  geom_errorbar(aes(ymin=RPKM-SD, ymax=RPKM+SD), width=.2,
-                 position=position_dodge(0.1))
-temp <- wetup_NoP_pers_melt_16 %>% filter(Phylum %like% p)
-titl <- paste0(p, "median abundance without P addition 16O-water")
-p16_NoP <- ggplot(temp, aes(x=time, y=RPKM, group=Phylum, color=Phylum)) + geom_line() + theme_bw() + 
-  scale_color_manual(values = cols) + ylab("log10 RPKM") + 
-  ggtitle(titl) + xlab("Time (weeks)") + 
-  theme(legend.position = "none")  +
-  geom_point() +
-  geom_errorbar(aes(ymin=RPKM-SD, ymax=RPKM+SD), width=.2,
-                 position=position_dodge(0.1))
-temp <- wetup_NoP_pers_melt_16 %>% filter(Phylum %like% p)
-titl <- paste0(p, "median abundance without P addition 18O-water")
-p18_NoP <- ggplot(temp, aes(x=time, y=RPKM, group=Phylum, color=Phylum)) + geom_line() + theme_bw() +
-  scale_color_manual(values = cols) + ylab("log10 RPKM") + 
-  ggtitle(titl) + xlab("Time (weeks)") + 
-  theme(legend.position = "none")  +
-  geom_point() +
-  geom_errorbar(aes(ymin=RPKM-SD, ymax=RPKM+SD), width=.2,
-                 position=position_dodge(0.1))
-
-filename <- paste0("wetup_temp_dyn_by_phylum_P_iso_", paste0(p, ".pdf"))
-ggarrange(p16_P, p18_P, p16_NoP, p18_NoP, nrow=2, ncol=2)
-ggsave(filename)
-}
+write.csv(df2, "hosts_by_phylum.csv")
 ```
 
 ```{r}
 # Diversity and evenness indices
 tax <- read.csv("Phylum_level_tax.tsv")
 
-tax_vOTU <- tax %>%
+tax <- tax %>%
   select(Contig, Phylum) %>%
   unique()
 
 wetup <- votu %>% column_to_rownames("Contig")
 wetup <- wetup[rowSums(wetup) > 0,]
-
-# wetup_shan <- data.frame(sapply(wetup, shannon)) %>% rownames_to_column("Sample") %>%
-#   mutate(time = gsub("\\..*", "", gsub("T", "", Sample)))
-# colnames(wetup_shan)[2] <- "Shannon_ind"
-# summary(aov(Shannon_ind~time, data = wetup_shan)) # p=0.09
-# 
-# # Shannon evenness doesn't change over time
-# ggbarplot(wetup_shan, x="Sample", y="Shannon_ind", fill="time") + scale_fill_brewer(palette="Paired") +
-#   theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
-# ggplot(data=wetup_shan, aes(x = time, y = Shannon_ind, fill = time)) + geom_boxplot() +
-#   scale_fill_brewer(palette="Paired") + theme_bw() +
-#   theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + 
-#   xlab("Time (weeks)") + ylab("Shannon evenness index")
-# ggsave("wetup_Shannon_evenness_over_time.pdf")
 
 # Diversity of viral communities over time after wetup
 
@@ -853,12 +872,36 @@ ggarrange(p_H, p_simp, p_invsimp, p_S, p_E, nrow=5, ncol=1, common.legend = TRUE
 ggsave("diversity_indices.pdf", width=8.5, height=10)
 
 # Statistical analysis and p value adjustment for multiple comparisons
-kruskal.test(Shannon_div~treats, data = H) # p=0.007
-kruskal.test(Simpson_div~treats, data = simp) # p=0.05
-kruskal.test(Inv_Simpson_div~treats, data = invsimp) # p=0.05
+kruskal.test(Shannon_div~treats, data = H) # p=0.0002, padj=0.001
+kruskal.test(Simpson_div~treats, data = simp) # p=0.001, padj=0.004
+kruskal.test(Inv_Simpson_div~treats, data = invsimp) # p=0.001, padj=0.004
 kruskal.test(Spec_num~treats, data = S) # p=0.2
-kruskal.test(PielouEven~treats, data = evenness) # p=0.002
-p.adjust(c(0.0066, 0.048, 0.048, 0.2, 0.0024)) # 0.03, 0.14, 0.14, 0.2, 0.01
+kruskal.test(PielouEven~treats, data = evenness) # p=0.0002, padj=0.001
+p.adjust(c(0.0001918, 0.001335, 0.001335, 0.2127, 0.0002018))
+
+# Plot without isotope
+H <- H %>% mutate(treats = gsub("18", "", treats))
+S <- S %>% mutate(treats = gsub("18", "", treats))
+evenness <- evenness %>% mutate(treats = gsub("18", "", treats))
+p_H <- ggplot(H, aes(x=treats, y=Shannon_div, fill=treats)) + 
+  geom_boxplot() + 
+  scale_fill_manual(values=pal) +
+  theme(axis.text.x=element_blank(), axis.title.x = element_blank()) +
+  theme_bw() + ylab("Shannon diversity") + theme(axis.title.x=element_blank())
+p_S <- ggplot(S, aes(x=treats, y=Spec_num, fill=treats)) + 
+  geom_boxplot() +
+  scale_fill_manual(values=pal) +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1), text = element_text(size=12)) + 
+  theme(legend.position="none") +
+  theme_bw() + ylab("Species number") + theme(axis.title.x=element_blank())
+p_E <- ggplot(evenness, aes(x=treats, y=PielouEven, fill=treats)) + 
+  geom_boxplot() +
+  scale_fill_manual(values=pal) +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1), text = element_text(size=12)) + 
+  theme(legend.position="none") +
+  theme_bw() + ylab("Pielou's evenness") + xlab("Treatment groups")
+ggarrange(ggarrange(p_H, p_S, p_E, common.legend = T, ncol = 1, nrow = 3), P, ncol = 2, nrow = 1, widths = c(0.3, 0.7))
+ggsave("fig_3_indices_PCoA.pdf", width = 8, height = 6)
 ```
 
 ```{r}
@@ -902,61 +945,45 @@ resp_noP <- resp %>% filter(amend=="No P")
 pairwise.wilcox.test(resp_P$CO2, resp_P$time) # 0 is significanly different from all time points p<0.05
 pairwise.wilcox.test(resp_noP$CO2, resp_noP$time) # 0 is significanly different from all time points p<0.05
 ```
+
 ```{r}
 # Simulate infection by RNA phages during week 1
 mapping_stats <- read.delim("SBB/table_S1_viralRNA.csv", header=T, sep=";")
-# This is where I need the levi and durna tables
-levi <- levi %>% mutate(pct = pct/100)
-durna <- durna %>% mutate(pct = pct/100)
 mapping_stats <- mapping_stats %>%
-  mutate(variable = paste(gsub("-", "", Time_Point), ".R.", gsub("_", ".", Sample_Name), sep="")) %>%
-  mutate(pct_reads_mapped_to_viruses = pct_reads_mapped_to_viruses/100)
-levi <- levi %>% left_join(mapping_stats, by="variable") 
-durna <- durna %>% left_join(mapping_stats, by="variable") 
+  mutate(variable = paste(gsub("-", "", Time_Point), ".R.", gsub("_", ".", Sample_Name), sep=""))
+# select phages and phage clades
+wetup_tax <- read.delim("table_S4_vOTUs.txt", sep = "\t", header = T)
+phg <- wetup_tax %>% filter(Class %like% "Levivi" | Order %like% "Durna" | host %like% "Bacteria") %>%
+  select(starts_with("T", ignore.case = F)) %>% pivot_longer(cols = everything(), names_to = "variable") %>% 
+  group_by(variable) %>% summarise(tpm = sum(value)) %>% left_join(mapping_stats, by = "variable")
 # RNA was extracted from 0.5 g soil, so I'm multiplying the cell number by 2 to normalize per g
-levi <- levi %>% rename(levi_pct = pct) %>%
-  mutate(levi_pct_reads = levi_pct * pct_reads_mapped_to_viruses) %>%
-  mutate(levi_RNA_ng = levi_pct_reads * 2 * Total.metaT.RNA..ng.) %>%
-  mutate(Time_Point = gsub("T-", "", Time_Point))
-durna <- durna %>% rename(durna_pct = pct) %>%
-  mutate(durna_pct_reads = durna_pct * pct_reads_mapped_to_viruses) %>%
-  mutate(durna_RNA_ng = durna_pct_reads * 2 * Total.metaT.RNA..ng.) %>%
+phg <- phg %>% 
+  mutate(phg_pct = tpm/num_reads) %>%
+  mutate(phg_RNA_ng = phg_pct * 2 * Total.metaT.RNA..ng.) %>%
   mutate(Time_Point = gsub("T-", "", Time_Point))
 
-levi_P <- levi %>% filter(Time_Point=="0" | str_detect(variable, "P"))
-levi_noP <- levi %>% filter(str_detect(variable, "P", negate = TRUE))
+phg_P <- phg %>% filter(Time_Point=="0" | str_detect(variable, "P"))
+phg_noP <- phg %>% filter(str_detect(variable, "P", negate = TRUE))
 durna_P <- durna %>% filter(Time_Point=="0" | str_detect(variable, "P"))
 durna_noP <- durna %>% filter(str_detect(variable, "P", negate = TRUE))
 # Panels A and B
-levi_P_fig <- ggplot(levi_P, aes(x = Time_Point, y = levi_RNA_ng)) + geom_boxplot(fill = "purple") + theme_classic() + 
-  xlab("Time (weeks)") + ylab("RNA from Leviviricetes (ng / g soil)") + ggtitle("With P") + ylim(0,7)
-levi_noP_fig <- ggplot(levi_noP, aes(x = Time_Point, y = levi_RNA_ng)) + geom_boxplot(fill = "salmon") + theme_classic() +
-  xlab("Time (weeks)") + ylab("RNA from Leviviricetes (ng / g soil)") + ggtitle("Without P") + ylim(0,7)
-durna_P_fig <- ggplot(durna_P, aes(x = Time_Point, y = durna_RNA_ng)) + geom_boxplot(fill = "purple") + theme_classic() + 
-  xlab("Time (weeks)") + ylab("RNA from Durnavirales (ng / g soil)") + ggtitle("With P") + ylim(0,2)
-durna_noP_fig <- ggplot(durna_noP, aes(x = Time_Point, y = durna_RNA_ng)) + geom_boxplot(fill = "salmon") + 
-  theme_classic() + xlab("Time (weeks)") + ylab("RNA from Durnavirales (ng / g soil)") + ggtitle("Without P") +
-  ylim(0,2)
-# ggarrange(levi_P_fig, levi_noP_fig, nrow = 2, ncol = 1)
-# Statistical testing of RNA amount by time
-kruskal.test(levi_RNA_ng ~ Time_Point, levi_P) # Kruskal-Wallis chi-squared = 6.9697, df = 3, p-value = 0.07287
-pairwise.wilcox.test(levi_P$levi_RNA_ng, levi_P$Time_Point, p.adjust.method = 'BH')
-#   0     1     2    
-# 1 0.071 -     -    
-# 2 0.071 0.937 -    
-# 3 0.095 0.937 0.937
-kruskal.test(levi_RNA_ng ~ Time_Point, levi_noP) # Kruskal-Wallis chi-squared = 5.29, df = 3, p-value = 0.1517
-kruskal.test(durna_RNA_ng ~ Time_Point, durna_P) # Kruskal-Wallis chi-squared = 2.9048, df = 3, p-value = 0.4065
-kruskal.test(durna_RNA_ng ~ Time_Point, durna_noP) # Kruskal-Wallis chi-squared = 1.697, df = 3, p-value = 0.6376
+phg_P_fig <- ggplot(phg_P, aes(x = Time_Point, y = phg_RNA_ng)) + geom_boxplot(fill = "purple") + theme_classic() + 
+  xlab("Time (weeks)") + ylab("RNA from Leviviricetes (ng / g soil)") + ggtitle("With P") + ylim(c(0, 40))
+phg_noP_fig <- ggplot(phg_noP, aes(x = Time_Point, y = phg_RNA_ng)) + geom_boxplot(fill = "salmon") + theme_classic() +
+  xlab("Time (weeks)") + ylab("RNA from Leviviricetes (ng / g soil)") + ggtitle("Without P") + ylim(c(0, 40))
 
-levi_P_mean <- levi_P %>% select(Time_Point, levi_RNA_ng) %>%
+# Statistical testing of RNA amount over time
+dunn.test(x = phg_P$phg_RNA_ng, g = phg_P$Time_Point, method="bh") # T0 to T2: 0.005, T0 to T3: 0.02
+dunn.test(x = phg_noP$phg_RNA_ng, g = phg_noP$Time_Point, method="bh") # T0 to T1: 0.03, T0 to T2: 0.02
+
+phg_P_mean <- phg_P %>% select(Time_Point, phg_RNA_ng) %>%
   group_by(Time_Point) %>% 
-  summarise(levi_RNA_ng_mean = round(mean(levi_RNA_ng), 2), levi_RNA_ng_sd  = round(sd(levi_RNA_ng), 2)) %>%
-  mutate(levi_RNA_ng_diff = levi_RNA_ng_mean - levi_RNA_ng_mean[1])
-levi_noP_mean <- levi_noP %>% select(Time_Point, levi_RNA_ng) %>%
+  summarise(phg_RNA_ng_mean = round(mean(phg_RNA_ng), 2), phg_RNA_ng_sd  = round(sd(phg_RNA_ng), 2)) %>%
+  mutate(phg_RNA_ng_diff = phg_RNA_ng_mean - phg_RNA_ng_mean[1])
+phg_noP_mean <- phg_noP %>% select(Time_Point, phg_RNA_ng) %>%
   group_by(Time_Point) %>% 
-  summarise(levi_RNA_ng_mean = round(mean(levi_RNA_ng), 2), levi_RNA_ng_sd  = round(sd(levi_RNA_ng), 2)) %>%
-  mutate(levi_RNA_ng_diff = levi_RNA_ng_mean - levi_RNA_ng_mean[1])
+  summarise(phg_RNA_ng_mean = round(mean(phg_RNA_ng), 2), phg_RNA_ng_sd  = round(sd(phg_RNA_ng), 2)) %>%
+  mutate(phg_RNA_ng_diff = phg_RNA_ng_mean - phg_RNA_ng_mean[1])
 durna_P_mean <- durna_P %>% select(Time_Point, durna_RNA_ng) %>%
   group_by(Time_Point) %>% 
   summarise(durna_RNA_ng_mean = round(mean(durna_RNA_ng), 5), durna_RNA_ng_sd  = round(sd(durna_RNA_ng), 2)) 
@@ -967,67 +994,47 @@ durna_noP_mean <- durna_noP %>% select(Time_Point, durna_RNA_ng) %>%
 # We can back-calculate how many phages the RNA from Leviviricetes represents 
 # By picking a burst size we can calculate how many cells lysed on average
 # RNA was extracted from 0.5 g soil, so I'm multiplying the cell number by 2 to normalize per g
-levi_P_mean <- levi_P_mean %>% 
-  mutate(num_virions = levi_RNA_ng_diff*2/(1.31e-12)) %>%
-  #mutate(num_cells_BS_2 = num_virions/2) %>%
-  #mutate(num_cells_BS_20 = num_virions/20) %>%
+# The amount of RNA per genome of viruses varies by phylum, but since most are Lenarviricota (ssRNA), 
+# this approximation will only consider a single strand
+phg_P_mean <- phg_P_mean %>% 
+  mutate(num_virions = phg_RNA_ng_diff*2/(1.31e-12)) %>%
   mutate(num_cells_BS_200 = num_virions/200) %>%
   mutate(num_cells_BS_2000 = num_virions/2000) %>%
   mutate(num_cells_BS_20000 = num_virions/20000) %>%
   mutate(num_cells_BS_200000 = num_virions/200000) %>%
   pivot_longer(cols = starts_with("num_cells"), names_to = "burst_size", values_to = "num_cells") %>%
   mutate(burst_size =  gsub(".*_", "", burst_size))
-levi_noP_mean <- levi_noP_mean %>% 
-  mutate(num_virions = levi_RNA_ng_diff*2/(1.31e-12)) %>%
-  #mutate(num_cells_BS_2 = num_virions/2) %>%
-  #mutate(num_cells_BS_20 = num_virions/20) %>%
+phg_noP_mean <- phg_noP_mean %>% 
+  mutate(num_virions = phg_RNA_ng_diff*2/(1.31e-12)) %>%
   mutate(num_cells_BS_200 = num_virions/200) %>%
   mutate(num_cells_BS_2000 = num_virions/2000) %>%
   mutate(num_cells_BS_20000 = num_virions/20000) %>%
   mutate(num_cells_BS_200000 = num_virions/200000) %>%
   pivot_longer(cols = starts_with("num_cells"), names_to = "burst_size", values_to = "num_cells") %>%
   mutate(burst_size =  gsub(".*_", "", burst_size))
-# durnavirales are double stranded, so the average genome size has to be doubled
-durna_P_mean <- durna_P_mean %>% 
-  mutate(num_virions = durna_RNA_ng_mean*2/(2*3.68e-11)) %>%
-  mutate(num_cells_BS_200 = num_virions/200) %>%
-  mutate(num_cells_BS_2000 = num_virions/2000) %>%
-  mutate(num_cells_BS_20000 = num_virions/20000) %>%
-  mutate(num_cells_BS_200000 = num_virions/200000) %>%
-  pivot_longer(cols = starts_with("num_cells"), names_to = "burst_size", values_to = "num_cells") %>%
-  mutate(burst_size =  gsub(".*_", "", burst_size))
-durna_noP_mean <- durna_noP_mean %>% 
-  mutate(num_virions = durna_RNA_ng_mean*2/(2*3.68e-11)) %>%
-  mutate(num_cells_BS_200 = num_virions/200) %>%
-  mutate(num_cells_BS_2000 = num_virions/2000) %>%
-  mutate(num_cells_BS_20000 = num_virions/20000) %>%
-  mutate(num_cells_BS_200000 = num_virions/200000) %>%
-  pivot_longer(cols = starts_with("num_cells"), names_to = "burst_size", values_to = "num_cells") %>%
-  mutate(burst_size =  gsub(".*_", "", burst_size))
+
 # Panels C and D
-levi_P_mean_fig <- ggplot(data = levi_P_mean, aes(x = Time_Point, y = num_cells+1, colour = burst_size, group = burst_size)) +
+phg_P_mean_fig <- ggplot(data = phg_P_mean, aes(x = Time_Point, y = num_cells+1, colour = burst_size, group = burst_size)) +
   theme_classic() + xlab("Time (weeks)") + ylab("Mean total virocells / g soil") +
   scale_color_brewer(palette = "Purples", direction = -1) + geom_point() + geom_line() + 
   ggtitle("With P") + scale_y_continuous(trans='log10')
-levi_noP_mean_fig <- ggplot(data = levi_noP_mean, aes(x = Time_Point, y = num_cells+1, colour = burst_size, group = burst_size)) +
-  theme_classic() + xlab("Time (weeks)") + ylab("Mean total virocells / g soil") +
-  scale_color_brewer(palette = "Reds", direction = -1) + geom_point() + geom_line() + 
-  ggtitle("Without P")  + scale_y_continuous(trans='log10')
-durna_P_mean_fig <- ggplot(data = durna_P_mean, aes(x = Time_Point, y = num_cells+1, colour = burst_size, group = burst_size)) +
-  theme_classic() + xlab("Time (weeks)") + ylab("Mean total virocells / g soil") +
-  scale_color_brewer(palette = "Purples", direction = -1) + geom_point() + geom_line() + 
-  ggtitle("With P") + scale_y_continuous(trans='log10')
-durna_noP_mean_fig <- ggplot(data = durna_noP_mean, aes(x = Time_Point, y = num_cells+1, colour = burst_size, group = burst_size)) +
+phg_noP_mean_fig <- ggplot(data = phg_noP_mean, aes(x = Time_Point, y = num_cells+1, colour = burst_size, group = burst_size)) +
   theme_classic() + xlab("Time (weeks)") + ylab("Mean total virocells / g soil") +
   scale_color_brewer(palette = "Reds", direction = -1) + geom_point() + geom_line() + 
   ggtitle("Without P") + scale_y_continuous(trans='log10')
-ggarrange(levi_P_fig, levi_noP_fig, levi_P_mean_fig, levi_noP_mean_fig, nrow = 2, ncol = 2)
+
+ggarrange(phg_P_fig, phg_noP_fig, phg_P_mean_fig, phg_noP_mean_fig, nrow = 2, ncol = 2)
 ggsave("fig5_lysis_simulation.pdf", height=6, width=8)
-ggarrange(durna_P_fig, durna_noP_fig, durna_P_mean_fig, durna_noP_mean_fig, nrow = 2, ncol = 2)
-ggsave("fig5_lysis_simulation_durna.pdf", height=6, width=8)
 ```
+
 ```{r}
 #Separate PCoA of phages (Leviviricetes and Durnavirales) and other viruses
+tax <- read.csv("Order_level_tax.tsv", header = TRUE)
+wetup <- votu %>% column_to_rownames("Contig")
+wetup <- wetup[rowSums(wetup) > 0,]
+
+wetup_tax <- wetup %>% rownames_to_column("Contig") %>% left_join(tax, by="Contig")
+
 phage_comm <- wetup_tax %>% filter(Class %like% "Levivi" | Order %like% "Durnavi")
 other_comm <- wetup_tax %>% filter(!(Class %like% "Levivi" | Order %like% "Durnavi"))
 
@@ -1104,6 +1111,9 @@ its_otus_for_table <- data.frame(its_otus$asv, its_otus_for_table)
 colnames(its_otus_for_table)[1] <- "asv"
 write_delim(its_otus_for_table, "ITS2_NCBI_taxonomy.tsv", delim = "\t")
 
+# You can just read the table since I made it
+its_otus_for_table <- read.delim("qiime2/ITS2_NCBI_taxonomy.tsv", sep = "\t")
+
 # Add ITS ASV table
 euks <- read.delim("qiime2/ITS2_SE_ASV_table.tsv", header = T, sep = "\t")
 colnames(euks)[1:3] <- c("asv", "T.0.Dry.Soil.A", "T.0.Dry.Soil.B")
@@ -1157,54 +1167,46 @@ jac_variances <- data.frame(pcoa$values$Relative_eig) %>%
 pcoa_df <- data.frame(pcoa$vectors) %>% 
   rownames_to_column(var = "sample") %>% 
   data.frame %>%
-  mutate(grp = case_when(
-    str_detect(sample, "T0") ~ "T0_16O",
-    str_detect(sample, "T1.*18O") ~ "T1_18O",
-    str_detect(sample, "T2.*18O") ~ "T2_18O",
-    str_detect(sample, "T3.*18O") ~ "T3_18O",
-    str_detect(sample, "T1.*H2O") ~ "T1_16O",
-    str_detect(sample, "T2.*H2O") ~ "T2_16O",
-    str_detect(sample, "T3.*H2O") ~ "T3_16O"
-  )) 
-pcoa_df <- pcoa_df %>% mutate(shape_grp = ifelse(str_detect(sample, "P"), "P", "No_P")) %>%
+  mutate(grp = substr(sample, 1, 2)) %>% 
+  mutate(shape_grp = ifelse(str_detect(sample, "P"), "P", "No_P")) %>%
   mutate(cond = paste(grp, shape_grp, sep="_"))
 eigenvalues<-round(jac_variances[,2], digits = 4)*100
-ggplot(pcoa_df, aes(x = Axis.1, y = Axis.2, label = sample)) +
+p1 <- ggplot(pcoa_df, aes(x = Axis.1, y = Axis.2, label = sample)) +
   geom_point(aes(color=grp, shape=shape_grp), size = 4) +
   ylab(paste0('Co 2 ',eigenvalues[2],'%')) + #Extract y axis value from variance
   xlab(paste0('Co 1 ',eigenvalues[1],'%')) + #Extract x axis value from variance
   scale_color_manual(values=cols) +
-  ggtitle('Square root transformed PCoA Ordination') +
-  coord_fixed(ratio = 1) +
-  theme_bw()
+  theme_bw() + ggtitle("Fungi")
 ggsave("RNA_viruses_PCoA_ITS2_sqrt.pdf", width=10, height = 7)
 
 # Statistics of fungal viruses community dynamics
-myc <- wetup_tax %>% filter(taxonomy %like% "Narna") %>% column_to_rownames("Contig") %>% select(starts_with("T", ignore.case = F))
-myc_sqrt <- sqrt(phg)
+wetup_tax <- read.delim("table_S4_vOTUs.txt", sep = "\t", header = T)
+myc <- wetup_tax %>% filter(host %like% "Fungi") %>% column_to_rownames("Contig") %>% select(starts_with("T", ignore.case = F))
+myc_sqrt <- sqrt(myc)
 myc_dist <- vegdist(t(myc), method = "bray")
+design <- read.delim("mtx_design_Gary.txt")
 adonis2(myc_dist~time*Phos, data = design)
 # Permutation test for adonis under reduced model
 # Terms added sequentially (first to last)
 # Permutation: free
 # Number of permutations: 999
 # 
-# adonis2(formula = phg_dist ~ time * Phos, data = design)
-#           Df SumOfSqs      R2       F Pr(>F)    
-# time       1   0.4353 0.07639  4.2968  0.001 ***
-# Phos       1   1.4804 0.25979 14.6130  0.001 ***
-# time:Phos  1   0.2371 0.04161  2.3406  0.014 *  
-# Residual  35   3.5458 0.62222                   
-# Total     38   5.6987 1.00000                   
+# adonis2(formula = myc_dist ~ time * Phos, data = design)
+#           Df SumOfSqs      R2      F Pr(>F)    
+# time       1   0.5205 0.05690 2.3799  0.001 ***
+# Phos       1   0.4575 0.05001 2.0918  0.002 ** 
+# time:Phos  1   0.5146 0.05626 2.3528  0.001 ***
+# Residual  35   7.6551 0.83683                  
+# Total     38   9.1478 1.00000                  
 # ---
 # Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
 
-phg_cols <- factor(design_comm$cosm)
-phg_dist <- vegdist(t(phg_sqrt), method = "bray")
+myc_cols <- factor(design_comm$cosm)
+myc_dist <- vegdist(t(myc_sqrt), method = "bray")
 
 cols <- brewer.pal(11, "BrBG")[c(1:4,8:11)]
 
-pcoa <- pcoa(phg_dist)
+pcoa <- pcoa(myc_dist)
 jac_variances <- data.frame(pcoa$values$Relative_eig) %>% 
   #select(PercVar = 'pcoa_bray.values.Relative_eig') %>% 
   rownames_to_column(var = "PCaxis") %>% 
@@ -1212,33 +1214,99 @@ jac_variances <- data.frame(pcoa$values$Relative_eig) %>%
 pcoa_df <- data.frame(pcoa$vectors) %>% 
   rownames_to_column(var = "sample") %>% 
   data.frame %>%
-  mutate(grp = case_when(
-    str_detect(sample, "T0") ~ "T0_16O",
-    str_detect(sample, "T1.*18O") ~ "T1_18O",
-    str_detect(sample, "T2.*18O") ~ "T2_18O",
-    str_detect(sample, "T3.*18O") ~ "T3_18O",
-    str_detect(sample, "T1.*H2O") ~ "T1_16O",
-    str_detect(sample, "T2.*H2O") ~ "T2_16O",
-    str_detect(sample, "T3.*H2O") ~ "T3_16O"
-  )) 
-pcoa_df <- pcoa_df %>% mutate(shape_grp = ifelse(str_detect(sample, "P"), "P", "No_P")) %>%
+  mutate(grp = substr(sample, 1, 3)) %>% 
+  mutate(shape_grp = ifelse(str_detect(sample, "P"), "P", "No_P")) %>%
   mutate(cond = paste(grp, shape_grp, sep="_"))
 eigenvalues<-round(jac_variances[,2], digits = 4)*100
-ggplot(pcoa_df, aes(x = Axis.1, y = Axis.2, label = sample)) +
+p2 <- ggplot(pcoa_df, aes(x = Axis.1, y = Axis.2, label = sample)) +
   geom_point(aes(color=grp, shape=shape_grp), size = 4) +
   ylab(paste0('Co 2 ',eigenvalues[2],'%')) + #Extract y axis value from variance
   xlab(paste0('Co 1 ',eigenvalues[1],'%')) + #Extract x axis value from variance
   scale_color_manual(values=cols) +
-  ggtitle('Square root transformed PCoA Ordination') +
-  coord_fixed(ratio = 0.8) +
-  theme_bw()
-ggsave("RNA_viruses_PCoA_phages_sqrt.pdf", width=10, height = 7)
+  theme_bw() + ggtitle("Mycoviruses")
+ggsave("RNA_viruses_PCoA_mycovirs_sqrt.pdf", width=10, height = 7)
+
+# Shannon-Weaver diversity
+pal <- brewer.pal(name = "Paired", n=7)
+H <- data.frame(diversity(t(euks_for_dist), "shannon")) %>% rownames_to_column("Sample") %>%
+  mutate(treats = gsub("18", "", gsub("\\.[A-C]$", "", gsub("T[0-3]\\.R\\.", "", Sample))))
+colnames(H)[2] <- "Shannon_div"
+p_H_euk <- ggplot(H, aes(x=treats, y=Shannon_div, fill=treats)) + 
+  geom_boxplot() + 
+  scale_fill_manual(values=pal) +
+  theme(axis.text.x=element_blank(), axis.title.x = element_blank()) +
+  theme_bw() + ylab("Shannon diversity") + theme(axis.title.x=element_blank())
+# Species number
+S <- data.frame(specnumber(t(euks_for_dist))) %>% rownames_to_column("Sample") %>%
+  mutate(treats = gsub("18", "", gsub("\\.[A-C]$", "", gsub("T[0-3]\\.R\\.", "", Sample))))
+colnames(S)[2] <- "Spec_num"
+p_S_euk <- ggplot(S, aes(x=treats, y=Spec_num, fill=treats)) + 
+  geom_boxplot() +
+  scale_fill_manual(values=pal) +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1), text = element_text(size=12)) + 
+  theme(legend.position="none") +
+  theme_bw() + ylab("Species number") + theme(axis.title.x=element_blank())
+
+# Evenness of eukaryotic communities over time after wetup
+evenness <- data.frame(cbind(calcDiv(sampleData=t(euks_for_dist), type="PielouEven")), S$Sample)
+evenness <- data.frame(evenness, S$treats)
+colnames(evenness)[2:3] <- c("Sample", "treats")
+evenness$Time <- gsub("T", "", gsub("\\..*", "", evenness$Sample))
+p_E_euk <- ggplot(evenness, aes(x=treats, y=PielouEven, fill=treats)) + 
+  geom_boxplot() +
+  scale_fill_manual(values=pal) +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1), text = element_text(size=12)) + 
+  theme(legend.position="none") +
+  theme_bw() + ylab("Pielou's evenness") + xlab("Treatment groups")
+
+# without time as a parameter
+# Shannon-Weaver diversity
+pal <- rev(brewer.pal(name = "Paired", n=5))[1:3]
+H <- data.frame(diversity(t(euks_for_dist), "shannon")) %>% rownames_to_column("Sample") %>%
+  mutate(treats = case_when(
+    str_detect(Sample, "Dry") ~ "Dry",
+    str_detect(Sample, "P") ~ "P",
+    .default = "noP"
+  ))
+colnames(H)[2] <- "Shannon_div"
+p_H_euk <- ggplot(H, aes(x=treats, y=Shannon_div, fill=treats)) + 
+  geom_boxplot() + 
+  scale_fill_manual(values=pal) +
+  theme(axis.text.x=element_blank(), axis.title.x = element_blank()) +
+  theme_bw() + ylab("Shannon diversity") + theme(axis.title.x=element_blank())
+# Species number
+S <- data.frame(specnumber(t(euks_for_dist))) %>% rownames_to_column("Sample") %>%
+  mutate(treats = case_when(
+    str_detect(Sample, "Dry") ~ "Dry",
+    str_detect(Sample, "P") ~ "P",
+    .default = "noP"
+  ))
+colnames(S)[2] <- "Spec_num"
+p_S_euk <- ggplot(S, aes(x=treats, y=Spec_num, fill=treats)) + 
+  geom_boxplot() +
+  scale_fill_manual(values=pal) +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1), text = element_text(size=12)) + 
+  theme(legend.position="none") +
+  theme_bw() + ylab("Species number") + theme(axis.title.x=element_blank())
+
+# Evenness of eukaryotic communities over time after wetup
+evenness <- data.frame(cbind(calcDiv(sampleData=t(euks_for_dist), type="PielouEven")), S$Sample)
+evenness <- data.frame(evenness, S$treats)
+colnames(evenness)[2:3] <- c("Sample", "treats")
+evenness$Time <- gsub("T", "", gsub("\\..*", "", evenness$Sample))
+p_E_euk <- ggplot(evenness, aes(x=treats, y=PielouEven, fill=treats)) + 
+  geom_boxplot() +
+  scale_fill_manual(values=pal) +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1), text = element_text(size=12)) + 
+  theme(legend.position="none") +
+  theme_bw() + ylab("Pielou's evenness") + xlab("Treatment groups")
 ```
+
 ```{r}
 # Dynamics of phages with iPHoP hosts
-phages <- read.csv("iphop_genome_predictions_new.csv", header=T) %>% select(!c(Host.genome, Main.method)) %>% unique %>% group_by(Virus) %>% top_n(1, Confidence.score) %>% mutate(Host.taxonomy = gsub(";s.*", "", Host.taxonomy)) %>% unique() %>% rename(Contig = Virus)
+phages <- read.csv("iphop_genome_predictions_new.csv", header=T) %>% select(!c(Host.genome, Main.method)) %>% unique %>% group_by(Contig) %>% top_n(1, Confidence.score) %>% mutate(Host.taxonomy = gsub(";s.*", "", Host.taxonomy)) %>% unique()
 phages_dyn <- wetup_tax %>% filter(Contig %in% phages$Contig) %>% mutate(virname = str_c("vOTU", row_number(), sep = "_")) %>% left_join(phages, by = "Contig")
-data_cols  <- which(colnames(virs) %like% "^T[0-3]")
+data_cols  <- which(colnames(phages) %like% "^T[0-3]")
 phages_dyn_rel <- phages_dyn
 temp2 <- phages_dyn_rel[, data_cols] * 100 / colSums(wetup_tax[, data_cols])
 phages_dyn_rel[, data_cols] <- temp2
@@ -1253,11 +1321,11 @@ host_gn <- gsub("^.*g__", "", phages_dyn_rel$Host.taxonomy)
 
 # Putative host dynamics
 bacs <- read.delim("qiime2/phyloseq/otu_table_16S.tsv") %>% select(!NEGATIVE)
+colnames(bacs)[2:3] <- c("T.0.Dry.Soil.A", "T.0.Dry.Soil.B")
 colnames(bacs)[1] <- "Feature.ID"
 bacs_tax <- read.delim("qiime2/taxonomy_16S.tsv") %>% select(!Confidence)
 bacs <- bacs %>% left_join(bacs_tax, by = "Feature.ID")
 bacs_rlvt <- bacs %>% mutate(genus = gsub(";.*", "", gsub("^.*g__", "", Taxon))) %>% filter(genus %in% host_gn) # only 10  ASVs  have a matching host genus
-colnames(bacs_rlvt)[2:3] <- c("T.0.Dry.Soil.A", "T.0.Dry.Soil.B")
 
 host_gn_uniq <- unique(bacs_rlvt$genus)
 data_cols  <- which(colnames(bacs_rlvt) %like% "^T\\.")
@@ -1278,7 +1346,8 @@ for (gn in host_gn_uniq) {
 }
 
 # Statistics
-bac_for_dist <- bacs %>% column_to_rownames("Feature.ID") %>% rename(T.0.Dry.Soil.A = X1.Dry.Soil, T.0.Dry.Soil.B = X2.Dry.Soil) %>% select(starts_with("T."))
+colnames(bacs) <- gsub("X[1-2]", "T.0.", colnames(bacs))
+bac_for_dist <- bacs %>% column_to_rownames("Feature.ID") %>% select(starts_with("T."))
 colnames(bac_for_dist) <- gsub("T\\.", "T", colnames(bac_for_dist))
 bac_dist <- vegdist(t(bac_for_dist), method = "bray")
 design_comm <- read.delim("design_comm.txt", sep = "\t", header = T)
@@ -1290,9 +1359,9 @@ adonis2(bac_dist~time*Phos, data=design_comm)
 # 
 # adonis2(formula = bac_dist ~ time * Phos, data = design_comm)
 #           Df SumOfSqs      R2      F Pr(>F)
-# time       1   0.3989 0.03291 0.9558  0.671
-# Phos       1   0.4528 0.03735 1.0848  0.161
-# time:Phos  1   0.4177 0.03446 1.0008  0.459
+# time       1   0.3989 0.03291 0.9558  0.100
+# Phos       1   0.4528 0.03735 1.0848  0.159
+# time:Phos  1   0.4177 0.03446 1.0008  0.460
 # Residual  26  10.8522 0.89528              
 # Total     29  12.1216 1.00000
 
@@ -1310,30 +1379,21 @@ jac_variances <- data.frame(pcoa$values$Relative_eig) %>%
 pcoa_df <- data.frame(pcoa$vectors) %>% 
   rownames_to_column(var = "sample") %>% 
   data.frame %>%
-  mutate(grp = case_when(
-    str_detect(sample, "T0") ~ "T0_16O",
-    str_detect(sample, "T1.*18O") ~ "T1_18O",
-    str_detect(sample, "T2.*18O") ~ "T2_18O",
-    str_detect(sample, "T3.*18O") ~ "T3_18O",
-    str_detect(sample, "T1.*H2O") ~ "T1_16O",
-    str_detect(sample, "T2.*H2O") ~ "T2_16O",
-    str_detect(sample, "T3.*H2O") ~ "T3_16O"
-  )) 
-pcoa_df <- pcoa_df %>% mutate(shape_grp = ifelse(str_detect(sample, "P"), "P", "No_P")) %>%
+  mutate(grp = gsub("\\.", "", substr(sample, 1, 3))) %>% 
+  mutate(shape_grp = ifelse(str_detect(sample, "P"), "P", "No_P")) %>%
   mutate(cond = paste(grp, shape_grp, sep="_"))
 eigenvalues<-round(jac_variances[,2], digits = 4)*100
-ggplot(pcoa_df, aes(x = Axis.1, y = Axis.2, label = sample)) +
+p3 <- ggplot(pcoa_df, aes(x = Axis.1, y = Axis.2, label = sample)) +
   geom_point(aes(color=grp, shape=shape_grp), size = 4) +
   ylab(paste0('Co 2 ',eigenvalues[2],'%')) + #Extract y axis value from variance
   xlab(paste0('Co 1 ',eigenvalues[1],'%')) + #Extract x axis value from variance
   scale_color_manual(values=cols) +
-  ggtitle('Square root transformed PCoA Ordination') +
-  coord_fixed(ratio = 0.6) +
-  theme_bw()
+  theme_bw() + ggtitle("Prokaryotes")
 ggsave("RNA_viruses_PCoA_16S_sqrt.pdf", width=10, height = 7)
 
 # Statistics of phage community dynamics
-phg <- wetup_tax %>% filter(taxonomy %like% "Levivi" | taxonomy %like% "Durna") %>% column_to_rownames("Contig") %>% select(starts_with("T", ignore.case = F))
+wetup_tax <- read.delim("table_S4_vOTUs.txt", sep = "\t", header = T)
+phg <- wetup_tax %>% filter(Class %like% "Levivi" | Order %like% "Durna" | host %like% "Bacteria") %>% column_to_rownames("Contig") %>% select(starts_with("T", ignore.case = F))
 phg_sqrt <- sqrt(phg)
 phg_dist <- vegdist(t(phg), method = "bray")
 adonis2(phg_dist~time*Phos, data = design)
@@ -1344,11 +1404,11 @@ adonis2(phg_dist~time*Phos, data = design)
 # 
 # adonis2(formula = phg_dist ~ time * Phos, data = design)
 #           Df SumOfSqs      R2       F Pr(>F)    
-# time       1   0.4353 0.07639  4.2968  0.001 ***
-# Phos       1   1.4804 0.25979 14.6130  0.001 ***
-# time:Phos  1   0.2371 0.04161  2.3406  0.014 *  
-# Residual  35   3.5458 0.62222                   
-# Total     38   5.6987 1.00000                   
+# time       1   0.5658 0.09172  5.0118  0.001 ***
+# Phos       1   1.3466 0.21828 11.9282  0.001 ***
+# time:Phos  1   0.3054 0.04951  2.7053  0.009 ** 
+# Residual  35   3.9512 0.64049                   
+# Total     38   6.1690 1.00000                   
 # ---
 # Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
 
@@ -1365,27 +1425,380 @@ jac_variances <- data.frame(pcoa$values$Relative_eig) %>%
 pcoa_df <- data.frame(pcoa$vectors) %>% 
   rownames_to_column(var = "sample") %>% 
   data.frame %>%
-  mutate(grp = case_when(
-    str_detect(sample, "T0") ~ "T0_16O",
-    str_detect(sample, "T1.*18O") ~ "T1_18O",
-    str_detect(sample, "T2.*18O") ~ "T2_18O",
-    str_detect(sample, "T3.*18O") ~ "T3_18O",
-    str_detect(sample, "T1.*H2O") ~ "T1_16O",
-    str_detect(sample, "T2.*H2O") ~ "T2_16O",
-    str_detect(sample, "T3.*H2O") ~ "T3_16O"
-  )) 
-pcoa_df <- pcoa_df %>% mutate(shape_grp = ifelse(str_detect(sample, "P"), "P", "No_P")) %>%
+  mutate(grp = substr(sample, 1, 2)) %>% 
+  mutate(shape_grp = ifelse(str_detect(sample, "P"), "P", "No_P")) %>%
   mutate(cond = paste(grp, shape_grp, sep="_"))
 eigenvalues<-round(jac_variances[,2], digits = 4)*100
-ggplot(pcoa_df, aes(x = Axis.1, y = Axis.2, label = sample)) +
+p4 <- ggplot(pcoa_df, aes(x = Axis.1, y = Axis.2, label = sample)) +
   geom_point(aes(color=grp, shape=shape_grp), size = 4) +
   ylab(paste0('Co 2 ',eigenvalues[2],'%')) + #Extract y axis value from variance
   xlab(paste0('Co 1 ',eigenvalues[1],'%')) + #Extract x axis value from variance
   scale_color_manual(values=cols) +
-  ggtitle('Square root transformed PCoA Ordination') +
-  coord_fixed(ratio = 0.8) +
-  theme_bw()
+  theme_bw() + ggtitle("Phages")
 ggsave("RNA_viruses_PCoA_phages_sqrt.pdf", width=10, height = 7)
+
+ggarrange(p3, p1, p4, p2, ncol = 2, nrow = 2, common.legend = T)
+ggsave("fig6_hostdyn_pcoa.pdf", height = 6, width = 8)
+```
+```{r}
+# Diversity indices for bacteria
+# Shannon-Weaver diversity
+pal <- brewer.pal(name = "Paired", n=7)
+H <- data.frame(diversity(t(bac_for_dist), "shannon")) %>% rownames_to_column("Sample") %>%
+  mutate(treats = gsub("18", "", gsub("\\.[A-C]$", "", gsub("T[0-3]\\.R\\.", "", Sample))))
+colnames(H)[2] <- "Shannon_div"
+p_H_bac <- ggplot(H, aes(x=treats, y=Shannon_div, fill=treats)) + 
+  geom_boxplot() + 
+  scale_fill_manual(values=pal) +
+  theme(axis.text.x=element_blank(), axis.title.x = element_blank()) +
+  theme_bw() + ylab("Shannon diversity") + theme(axis.title.x=element_blank())
+# Species number
+S <- data.frame(specnumber(t(bac_for_dist))) %>% rownames_to_column("Sample") %>%
+  mutate(treats = gsub("18", "", gsub("\\.[A-C]$", "", gsub("T[0-3]\\.R\\.", "", Sample))))
+colnames(S)[2] <- "Spec_num"
+p_S_bac <- ggplot(S, aes(x=treats, y=Spec_num, fill=treats)) + 
+  geom_boxplot() +
+  scale_fill_manual(values=pal) +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1), text = element_text(size=12)) + 
+  theme(legend.position="none") +
+  theme_bw() + ylab("Species number") + theme(axis.title.x=element_blank())
+
+# Evenness of eukaryotic communities over time after wetup
+evenness <- data.frame(cbind(calcDiv(sampleData=t(bac_for_dist), type="PielouEven")), S$Sample)
+evenness <- data.frame(evenness, S$treats)
+colnames(evenness)[2:3] <- c("Sample", "treats")
+evenness$Time <- gsub("T", "", gsub("\\..*", "", evenness$Sample))
+p_E_bac <- ggplot(evenness, aes(x=treats, y=PielouEven, fill=treats)) + 
+  geom_boxplot() +
+  scale_fill_manual(values=pal) +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1), text = element_text(size=12)) + 
+  theme(legend.position="none") +
+  theme_bw() + ylab("Pielou's evenness") + xlab("Treatment groups")
+
+ggarrange(p_H_euk, p_H_bac, p_S_euk, p_S_bac, p_E_euk, p_E_bac, nrow = 3, ncol = 2, common.legend = T)
+ggsave("sup_fig_diversity_euk_bac_bytime.pdf", height = 10, width = 8)
+
+# Without time as a parameter
+# Shannon-Weaver diversity
+pal <- rev(brewer.pal(name = "Paired", n=5))[1:3]
+H <- data.frame(diversity(t(bac_for_dist), "shannon")) %>% rownames_to_column("Sample") %>%
+  mutate(treats = case_when(
+    str_detect(Sample, "Dry") ~ "DrySoil",
+    str_detect(Sample, "P") ~ "P",
+    .default = "noP"
+  ))
+colnames(H)[2] <- "Shannon_div"
+p_H_bac <- ggplot(H, aes(x=treats, y=Shannon_div, fill=treats)) + 
+  geom_boxplot() + 
+  scale_fill_manual(values=pal) +
+  theme(axis.text.x=element_blank(), axis.title.x = element_blank()) +
+  theme_bw() + ylab("Shannon diversity") + theme(axis.title.x=element_blank())
+# Species number
+S <- data.frame(specnumber(t(bac_for_dist))) %>% rownames_to_column("Sample") %>%
+  mutate(treats = case_when(
+    str_detect(Sample, "Dry") ~ "DrySoil",
+    str_detect(Sample, "P") ~ "P",
+    .default = "noP"
+  ))
+colnames(S)[2] <- "Spec_num"
+p_S_bac <- ggplot(S, aes(x=treats, y=Spec_num, fill=treats)) + 
+  geom_boxplot() +
+  scale_fill_manual(values=pal) +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1), text = element_text(size=12)) + 
+  theme(legend.position="none") +
+  theme_bw() + ylab("Species number") + theme(axis.title.x=element_blank())
+
+# Evenness of eukaryotic communities over time after wetup
+evenness <- data.frame(cbind(calcDiv(sampleData=t(bac_for_dist), type="PielouEven")), S$Sample)
+evenness <- data.frame(evenness, S$treats)
+colnames(evenness)[2:3] <- c("Sample", "treats")
+evenness$Time <- gsub("T", "", gsub("\\..*", "", evenness$Sample))
+p_E_bac <- ggplot(evenness, aes(x=treats, y=PielouEven, fill=treats)) + 
+  geom_boxplot() +
+  scale_fill_manual(values=pal) +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1), text = element_text(size=12)) + 
+  theme(legend.position="none") +
+  theme_bw() + ylab("Pielou's evenness") + xlab("Treatment groups")
+
+ggarrange(p_H_euk, p_H_bac, p_S_euk, p_S_bac, p_E_euk, p_E_bac, nrow = 3, ncol = 2, common.legend = T)
+ggsave("sup_fig_diversity_euk_bac_bytime.pdf", height = 10, width = 8)
 ```
 
+```{r}
+#Viruses with an external phase
+capsids <- scan("DRAM/contigs_w_capsid.txt", what="character()")
+temp <- wetup_tax[wetup_tax$Contig %in% capsids,]
+pcts <- colSums(temp[,2:40])*100/colSums(wetup_tax[,2:40]) # % of viruses with capsid gene out of total viruses
+max(pcts) # 3.5%
+min(pcts) # 0.8%
+mean(pcts) # 1.3%
 
+cols_P <- which(colnames(temp) %like% "P")
+cols_noP <- which(!(colnames(temp) %like% "P") & !(colnames(temp) %like% "T0"))
+cols_noP <- cols_noP[cols_noP < 40 & cols_noP > 1]
+t.test(pcts[cols_P], pcts[cols_noP]) # no significant difference in relative abundance with P for all viruses together
+
+temp_melt <- temp_num %>% rownames_to_column("Contig") %>% pivot_longer(cols = !Contig, names_to = "sample") %>% mutate(amnd = case_when(
+  str_detect(sample, "P") ~ "P",
+  .default = "noP"
+))
+temp_comp <- compare_means(value ~ amnd, temp_melt, group.by = "Contig")
+
+temp <- temp %>% left_join(hosts, by="Contig")
+temp_num <- temp %>% remove_rownames() %>% column_to_rownames("Contig") %>% select(starts_with("T", ignore.case = F))
+ann <- temp %>% remove_rownames() %>% column_to_rownames("Contig") %>% select(Order, host)
+pheatmap(temp_num, color = colorRampPalette(brewer.pal(name="YlOrRd", n=9))(100), annotation_row = ann, cluster_rows = T, cluster_cols = F, show_rownames = F)
+```
+
+```{r}
+# Differential abundance of 16S ASVs
+colnames(bacs)[2:3] <- c("T.0.Dry.soil.A", "T.0.Dry.soil.B")
+design_comm$time <- factor(design_comm$time)
+design_comm$Sample <- gsub("R\\.", "", design_comm$Sample)
+#Run DESeq2
+bacs_cts <- bacs %>% column_to_rownames("Feature.ID") %>% select(starts_with("T."))
+colnames(bacs_cts) <- gsub("T\\.", "T", colnames(bacs_cts))
+bacs_cts <- bacs_cts[,colSums(bacs_cts) > 3000]
+design_comm <- design_comm %>% filter(Sample %in% colnames(bacs_cts))
+dds <- DESeqDataSetFromMatrix(countData = bacs_cts,
+                              colData = design_comm,
+                              design= ~ Phos + time)
+dds <- DESeq(dds)
+res <- results(dds)
+resultsNames(dds)
+
+dds_counts <- counts(dds, normalized=TRUE)
+rownames(dds_counts) <- rownames(res)
+dds_16S_tax <- merge(dds_counts, bacs_tax, by.x="row.names", by.y="row")
+write.csv(dds_16S_tax, file = "dds_16S_tax.csv")
+saveRDS(dds, file = "dds_16S_tax.rds")
+dds <- readRDS("dds_16S_tax.rds")
+
+colnames(bacs_tax)[1] <- "row"
+
+# P vs. no P
+res <- results(dds, tidy=TRUE, contrast=c("Phos", "P", "None")) %>%
+  arrange(padj, pvalue) %>%
+  tibble() %>% 
+  left_join(bacs_tax, by = "row") %>%
+  mutate(tax_short = gsub("^.*__", "", gsub("; [a-z]__$", "", gsub("; [a-z]__;.*", "", Taxon))))
+
+EnhancedVolcano(res,
+    lab = res$tax_short,
+    x = 'log2FoldChange',
+    y = 'pvalue',
+    pCutoff = 10e-10,
+    FCcutoff = 1,
+    pointSize = 1.0,
+    labSize = 1.5,
+    shape = 1,
+    title = "With vs. without P amendment")
+
+sig_taxa <- res %>% filter(padj < 10e-10) %>% mutate(class = gsub(";.*", "", gsub("^.*c__", "", Taxon))) %>%
+  mutate(phylum = gsub(";.*", "", gsub("^.*p__", "", Taxon)))
+sig_taxa_down <- sig_taxa %>% filter(log2FoldChange < 0)
+sig_taxa_up <- sig_taxa %>% filter(log2FoldChange > 0) # All Actinobacteria
+ggplot(sig_taxa_down, aes(x = phylum, y = log2FoldChange)) + geom_boxplot(aes(fill = phylum)) + 
+  theme_classic() + theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + scale_fill_brewer(palette = "Set3")
+ggsave("bacs_deseq_down_with_P.pdf", height = 9, width = 8.5)
+n_per_phylum <- sig_taxa_down %>% group_by(phylum) %>% tally()
+# Table S7
+asvs <- bacs_cts %>% rownames_to_column("row") %>% filter(row %in% sig_taxa_down$row) %>% left_join(bacs_tax, by = "row")
+write.table(asvs, "table_S7_16S_asvs.tsv", sep = ",", row.names = F)
+# When did these asvs appear first?
+asvs <- pivot_longer(asvs, cols = !c(row, Taxon), names_to = "sample", values_to = "tpm") %>% 
+  mutate(grp = gsub("\\.[A-C]$", "", sample)) %>% mutate(presence = case_when(
+    tpm > 0 ~ 1,
+    .default = 0
+  )) %>% mutate(grp = gsub("18", "", grp)) %>% 
+  group_by(grp) %>% summarise(num_asvs = sum(presence))
+
+# T1 vs. T0 - no significant results
+res <- results(dds, tidy=TRUE, contrast=c("time", "1", "0")) %>%
+  arrange(padj, pvalue) %>%
+  tibble() %>% 
+  left_join(bacs_tax, by = "row") %>%
+  mutate(tax_short = gsub("^.*__", "", gsub("; [a-z]__$", "", gsub("; [a-z]__;.*", "", Taxon))))
+
+EnhancedVolcano(res,
+    lab = res$tax_short,
+    x = 'log2FoldChange',
+    y = 'pvalue',
+    pCutoff = 10e-10,
+    FCcutoff = 1,
+    pointSize = 1.0,
+    labSize = 1.5,
+    shape = 1,
+    title = "After one week compared to dry soil")
+```
+
+```{r}
+# Differential abundance of ITS2 ASVs
+design_comm$time <- factor(design_comm$time)
+design_comm$Sample <- gsub("R\\.", "", design_comm$Sample)
+#Run DESeq2
+euks_cts <- euks %>% column_to_rownames("asv") %>% select(starts_with("T."))
+colnames(euks_cts) <- gsub("T\\.", "T", colnames(euks_cts))
+euks_cts <- euks_cts[,colSums(euks_cts) > 1800]
+colnames(euks_cts) <- gsub("Soil", "soil", colnames(euks_cts))
+design_comm <- design_comm %>% filter(Sample %in% colnames(euks_cts))
+dds <- DESeqDataSetFromMatrix(countData = euks_cts,
+                              colData = design_comm,
+                              design= ~ Phos + time)
+dds <- DESeq(dds)
+res <- results(dds)
+resultsNames(dds)
+
+dds_counts <- counts(dds, normalized=TRUE)
+rownames(dds_counts) <- rownames(res)
+dds_ITS2_tax <- merge(dds_counts, its_otus_for_table, by.x="row.names", by.y="asv")
+write.csv(dds_ITS2_tax, file = "dds_ITS2_tax.csv")
+saveRDS(dds, file = "dds_ITS2_tax.rds")
+
+colnames(its_otus_for_table)[1] <- "row"
+
+# P vs. no P: only one ASV affected, Barriopsis
+res <- results(dds, tidy=TRUE, contrast=c("Phos", "P", "None")) %>%
+  arrange(padj, pvalue) %>%
+  tibble() %>% 
+  left_join(its_otus_for_table, by = "row")
+
+EnhancedVolcano(res,
+    lab = res$genus,
+    x = 'log2FoldChange',
+    y = 'pvalue',
+    pCutoff = 10e-10,
+    FCcutoff = 1,
+    pointSize = 2.0,
+    labSize = 3,
+    shape = 1,
+    title = "With vs. without P amendment")
+
+# T1 vs. T0 - no significant results
+res <- results(dds, tidy=TRUE, contrast=c("time", "1", "0")) %>%
+  arrange(padj, pvalue) %>%
+  tibble() %>% 
+  left_join(its_otus_for_table, by = "row") 
+
+EnhancedVolcano(res,
+    lab = res$genus,
+    x = 'log2FoldChange',
+    y = 'pvalue',
+    pCutoff = 10e-10,
+    FCcutoff = 1,
+    pointSize = 1.0,
+    labSize = 1.5,
+    shape = 1,
+    title = "After one week compared to dry soil")
+```
+
+```{r}
+# Use DESeq2 to identify vOTUs that bloomed over the first week or with P amendment
+design_phage <- design %>% filter(time == 0 | time == 1) %>% mutate(time = as_factor(time))
+design_phage$grp <- paste(design_phage$Phos, design_phage$time, sep="_")
+#Run DESeq2
+wetup <- votu %>% column_to_rownames("Contig")
+wetup <- wetup[rowSums(wetup) > 0,]
+votus <- rownames(wetup)
+samps <- design_phage$Sample
+
+reads <- read.delim("coverm_count_breadth50_Gary.tsv", sep="\t", header=T) %>% filter(Contig %in% votus) %>% column_to_rownames("Contig") 
+colnames(reads) <- gsub("_sort.Read.Count", "", colnames(reads))
+reads <- reads %>% select(all_of(samps))
+
+dds <- DESeqDataSetFromMatrix(countData = reads,
+                              colData = design_phage,
+                              design= ~ grp)
+dds <- DESeq(dds)
+res <- results(dds)
+resultsNames(dds)
+
+dds_counts <- counts(dds, normalized=TRUE)
+rownames(dds_counts) <- rownames(res)
+dds_votu_tax <- merge(dds_counts, tax, by.x="row.names", by.y="Contig")
+write.csv(dds_votu_tax, file = "dds_votu_tax.csv")
+saveRDS(dds, file = "dds_votu_tax.rds")
+
+# Load existing DDS
+dds <- readRDS("dds_votu_tax.rds")
+
+# P vs. no P
+res <- results(dds, tidy=TRUE, contrast=c("grp", "P_1", "None_0")) %>%
+  arrange(padj, pvalue) 
+colnames(res)[1] <- "Contig"
+res <- res %>% tibble() %>% left_join(tax, by = "Contig")
+
+EnhancedVolcano(res,
+    lab = res$taxonomy,
+    x = 'log2FoldChange',
+    y = 'pvalue',
+    pCutoff = 10e-10,
+    FCcutoff = 1,
+    pointSize = 1.0,
+    labSize = 1.5,
+    shape = 1,
+    title = "With phosphate amendment T1 vs. T0")
+
+sig_taxa <- res %>% filter(padj < 10e-6) 
+sig_taxa_down <- sig_taxa %>% filter(log2FoldChange < 0) # Narna and Ourli
+sig_taxa_up <- sig_taxa %>% filter(log2FoldChange > 0) # mostly Narna and Levi
+ggplot(sig_taxa_up, aes(x = taxonomy, y = log2FoldChange)) + geom_boxplot(aes(fill = taxonomy)) + 
+  theme_classic() + theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + scale_fill_brewer(palette = "Set3")
+ggsave("vOTUs_deseq_up_with_P_p10-6.pdf", height = 9, width = 8.5)
+n_per_tax <- sig_taxa_up %>% group_by(taxonomy) %>% tally()
+# Save data
+votus <- reads %>% rownames_to_column("Contig") %>% filter(Contig %in% sig_taxa$Contig) %>% left_join(tax, by = "Contig") %>% left_join(hosts, by = "Contig")
+write.table(votus, "table_S8_votus.tsv", sep = ",", row.names = F)
+
+# Plot heatmap of vOTUs that increased with P amendment between T1 and T0
+Pvotus <- wetup %>% rownames_to_column("Contig") %>% filter(Contig %in% votus$Contig) %>% pivot_longer(cols = !Contig, names_to = "sample", values_to = "TPM") %>% mutate(grp = gsub("\\.[A-C]$", "", sample)) %>% mutate(grp = gsub("\\.R\\.H2.*O", "", grp)) %>% group_by(Contig, grp) %>% summarise(TPM = sum(TPM)) %>% pivot_wider(names_from = grp, values_from = TPM) %>% left_join(hosts) %>% left_join(tax) %>% column_to_rownames("Contig")
+
+tpm <- Pvotus %>% select(starts_with("T", ignore.case = FALSE))
+ann <- Pvotus %>% select(Order, host)
+ann_colors = list(
+    host = c(Bacteria = "#6fa8dc", Fungi = "#ea9999"),
+    Order = c(Timlovirales = "#FFFF99", Levivirales = "#6A3D9A", Lenarviricota = "#CAB2D6", Tolivirales = "#B2DF8A", Ourlivirales = "#FF7F00", Pisuviricota = "cyan", Cryppavirales = "#FDBF6F", Wolframvirales = "#B15928")
+)
+
+pheatmap(tpm, color = colorRampPalette(brewer.pal(n = 9, name = "BrBG"))(100), scale = "row", cluster_rows = TRUE, cluster_cols = FALSE, legend = TRUE, annotation_row = ann, annotation_colors = ann_colors, show_rownames = FALSE, filename = "Pvotus_up_heatmap.pdf")
+
+# T1 unamended vs. T0
+res <- results(dds, tidy=TRUE, contrast=c("grp", "None_1", "None_0")) %>%
+  arrange(padj, pvalue) 
+colnames(res)[1] <- "Contig"
+res <- res %>% tibble() %>% left_join(tax, by = "Contig")
+
+EnhancedVolcano(res,
+    lab = res$taxonomy,
+    x = 'log2FoldChange',
+    y = 'pvalue',
+    pCutoff = 10e-10,
+    FCcutoff = 1,
+    pointSize = 1.0,
+    labSize = 1.5,
+    shape = 1,
+    title = "With phosphate amendment T1 vs. T0")
+
+sig_taxa <- res %>% filter(padj < 10e-6) 
+sig_taxa_down <- sig_taxa %>% filter(log2FoldChange < 0) # None
+sig_taxa_up <- sig_taxa %>% filter(log2FoldChange > 0) # Narna and Levi
+ggplot(sig_taxa_up, aes(x = taxonomy, y = log2FoldChange)) + geom_boxplot(aes(fill = taxonomy)) + 
+  theme_classic() + theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + scale_fill_brewer(palette = "Set3")
+ggsave("vOTUs_deseq_up_without_P_p10-6.pdf", height = 9, width = 8.5)
+n_per_tax <- sig_taxa_up %>% group_by(taxonomy) %>% tally()
+# Save data
+votus_up <- reads %>% rownames_to_column("Contig") %>% filter(Contig %in% sig_taxa_up$Contig) %>% left_join(tax, by = "Contig") %>% left_join(hosts, by = "Contig")
+votus_down <- reads %>% rownames_to_column("Contig") %>% filter(Contig %in% sig_taxa_down$Contig) %>% left_join(tax, by = "Contig") %>% left_join(hosts, by = "Contig")
+write.table(votus_up, "table_S9_votus_up.tsv", sep = ",", row.names = F)
+write.table(votus_up, "table_S10_votus_down.tsv", sep = ",", row.names = F)
+
+sig_taxa <- wetup %>% rownames_to_column("Contig") %>% filter(Contig %in% sig_taxa_down$Contig) %>% pivot_longer(cols = !Contig, names_to = "sample", values_to = "TPM") %>% mutate(grp = gsub("\\.[A-C]$", "", sample)) %>% mutate(grp = gsub("\\.R\\.H2.*O", "", grp)) %>% group_by(Contig, grp) %>% summarise(TPM = sum(TPM)) %>% pivot_wider(names_from = grp, values_from = TPM) %>% left_join(hosts) %>% left_join(tax) %>% column_to_rownames("Contig")
+tpm <- sig_taxa %>% select(starts_with("T", ignore.case = FALSE))
+ann <- sig_taxa %>% select(Order, host)
+ann_colors = list(
+    host = c(Bacteria = "#6fa8dc", Fungi = "#ea9999"),
+    Order = c(Wolframvirales = "#FFFF99", Ourlivirales = "#FF7F00")
+)
+
+pheatmap(tpm, color = colorRampPalette(brewer.pal(n = 9, name = "BrBG"))(100), scale = "row", cluster_rows = TRUE, cluster_cols = FALSE, legend = TRUE, annotation_row = ann, annotation_colors = ann_colors, show_rownames = FALSE)
+```
