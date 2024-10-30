@@ -24,6 +24,7 @@ library("dichromat")
 library("stringi")
 library("dunn.test")
 library("chemodiv")
+se <- function(x) sqrt(var(x)/length(x))
 ```
 
 ## Load data
@@ -573,12 +574,12 @@ df <- wetup_tax %>% column_to_rownames("Contig") %>% pivot_longer(cols=starts_wi
     sample %like% "P" ~ "P",
     .default = "noP"
   )) %>%
-  mutate(replicate = gsub("T.*\\.", "", sample))
+  mutate(replicate = gsub("T.*\\.", "", sample)) %>% filter(!(is.na(Phylum)))
 wP <- df %>% filter(amend == "P" | time == 0) %>% group_by(Phylum, time, amend, replicate) %>% summarise(tpm_sum = sum(tpm)) %>% 
-  group_by(Phylum, time, amend) %>% summarise(tpm_mean = mean(tpm_sum), sd = sd(tpm_sum)) %>%
+  group_by(Phylum, time, amend) %>% summarise(tpm_mean = mean(tpm_sum), sd = se(tpm_sum)) %>%
   mutate(Phylum = factor(Phylum, levels = c("Lenarviricota", "Kitrinoviricota", "Negarnaviricota", "Duplornaviricota", "Pisuviricota")))
 woP <- df %>% filter(amend == "noP") %>% group_by(Phylum, time, amend, replicate) %>% summarise(tpm_sum = sum(tpm)) %>% 
-  group_by(Phylum, time, amend) %>% summarise(tpm_mean = mean(tpm_sum), sd = sd(tpm_sum)) %>%
+  group_by(Phylum, time, amend) %>% summarise(tpm_mean = mean(tpm_sum), sd = se(tpm_sum)) %>%
   mutate(Phylum = factor(Phylum, levels = c("Lenarviricota", "Kitrinoviricota", "Negarnaviricota", "Duplornaviricota", "Pisuviricota")))
 
 PP_phylum <- ggplot(data=wP, aes(x=time, y=tpm_mean, colour=Phylum, group=Phylum)) +
@@ -590,7 +591,7 @@ PnoP_phylum <- ggplot(data=woP, aes(x=time, y=tpm_mean, colour=Phylum, group=Phy
   geom_line() + scale_colour_brewer(palette = "Dark2") +
   theme_bw() + ggtitle("Unamended") +
   xlab("Time (weeks)") + ylab("Cummulative abundance (TPM)") + 
-  geom_errorbar(aes(ymin=tpm_mean-sd, ymax=tpm_mean+sd), width=0.1) + ylim(0, 800000)
+  geom_errorbar(aes(ymin=tpm_mean-sd, ymax=tpm_mean+sd), width=0.1)
 ggarrange(PP_phylum, PnoP_phylum, nrow=1, ncol=2, common.legend = TRUE)
 ggsave("tpm_sum_byphylum_line.pdf", width = 8, height = 4)
 tpm_wohost <- sum(df$tpm)
@@ -618,35 +619,41 @@ l_p <- lapply(l_p, getsig)
 getsig <- function (x) {which(x <= 0.05)}
 sigp <- lapply(l_p, getsig) # get indices of significant effects per phylum
 sigR <- map2(l_R, sigp, `[`) # get R^2 values of these effects
-# dsDNA: Duplorna unaffected, Pisu affected by P and time (7%, 7%). ssRNA+: Lenar by P and time (7%, 17%), Kitrino unaffected. ssRNA-: Negarna by P (8%).
+# dsDNA: Duplorna unaffected, Pisu affected by P and time (7%, 7%). ssRNA+: Lenar by P and time (7%, 17%), Kitrino unaffected. ssRNA-: Negarna by time (8%).
+wP <- df %>% filter(amend == "P" | time == 0) %>% group_by(Phylum, time, amend, replicate) %>% summarise(tpm_sum = sum(tpm)) %>% 
+  filter(Phylum %like% "Lenar")
+woP <- df %>% filter(amend == "noP") %>% group_by(Phylum, time, amend, replicate) %>% summarise(tpm_sum = sum(tpm)) %>% 
+  filter(Phylum %like% "Lenar")
+dunn.test(wP$tpm_sum, wP$time, method="bh", alpha = 0.1) # general p=0.12, df=3, NS
+dunn.test(woP$tpm_sum, woP$time, method="bh", alpha = 0.1) # general p=0.04, df=3, NS
 
 # Temporal dynamics without Lenarviricota
-df <- wetup_tax %>% column_to_rownames("Contig") %>% pivot_longer(cols=starts_with("T", ignore.case = FALSE), names_to = "sample", values_to = "tpm") %>%
-  mutate(time = gsub("T", "", gsub("\\..*", "", sample))) %>%
-  mutate(amend = case_when(
-    sample %like% "P" ~ "P",
-    .default = "noP"
-  )) %>%
-  mutate(replicate = gsub("T.*\\.", "", sample)) %>% filter(Phylum != "Lenarviricota")
-wP <- df %>% filter(amend == "P" | time == 0) %>% group_by(Phylum, time, amend, replicate) %>% summarise(tpm_sum = sum(tpm)) %>% 
-  group_by(Phylum, time, amend) %>% summarise(tpm_mean = mean(tpm_sum), sd = sd(tpm_sum)) %>%
-  mutate(Phylum = factor(Phylum, levels = c("Lenarviricota", "Kitrinoviricota", "Negarnaviricota", "Duplornaviricota", "Pisuviricota")))
-woP <- df %>% filter(amend == "noP") %>% group_by(Phylum, time, amend, replicate) %>% summarise(tpm_sum = sum(tpm)) %>% 
-  group_by(Phylum, time, amend) %>% summarise(tpm_mean = mean(tpm_sum), sd = sd(tpm_sum)) %>%
-  mutate(Phylum = factor(Phylum, levels = c("Lenarviricota", "Kitrinoviricota", "Negarnaviricota", "Duplornaviricota", "Pisuviricota")))
-
-PP_phylum <- ggplot(data=wP, aes(x=time, y=tpm_mean, colour=Phylum, group=Phylum)) +
-  geom_line() + scale_colour_brewer(palette = "Dark2") +
-  theme_bw() + ggtitle("P amended") +
-  xlab("Time (weeks)") + ylab("Cummulative abundance (TPM)") + 
-  geom_errorbar(aes(ymin=tpm_mean-sd, ymax=tpm_mean+sd), width=0.1)
-PnoP_phylum <- ggplot(data=woP, aes(x=time, y=tpm_mean, colour=Phylum, group=Phylum)) +
-  geom_line() + scale_colour_brewer(palette = "Dark2") +
-  theme_bw() + ggtitle("Unamended") +
-  xlab("Time (weeks)") + ylab("Cummulative abundance (TPM)") + 
-  geom_errorbar(aes(ymin=tpm_mean-sd, ymax=tpm_mean+sd), width=0.1) + ylim(0, 800000)
-ggarrange(PP_phylum, PnoP_phylum, nrow=1, ncol=2, common.legend = TRUE)
-ggsave("tpm_sum_byphylum_line_noLenar.pdf", width = 8, height = 8)
+# df <- wetup_tax %>% column_to_rownames("Contig") %>% pivot_longer(cols=starts_with("T", ignore.case = FALSE), names_to = "sample", values_to = "tpm") %>%
+#   mutate(time = gsub("T", "", gsub("\\..*", "", sample))) %>%
+#   mutate(amend = case_when(
+#     sample %like% "P" ~ "P",
+#     .default = "noP"
+#   )) %>%
+#   mutate(replicate = gsub("T.*\\.", "", sample)) %>% filter(Phylum != "Lenarviricota")
+# wP <- df %>% filter(amend == "P" | time == 0) %>% group_by(Phylum, time, amend, replicate) %>% summarise(tpm_sum = sum(tpm)) %>% 
+#   group_by(Phylum, time, amend) %>% summarise(tpm_mean = mean(tpm_sum), sd = se(tpm_sum)) %>%
+#   mutate(Phylum = factor(Phylum, levels = c("Lenarviricota", "Kitrinoviricota", "Negarnaviricota", "Duplornaviricota", "Pisuviricota")))
+# woP <- df %>% filter(amend == "noP") %>% group_by(Phylum, time, amend, replicate) %>% summarise(tpm_sum = sum(tpm)) %>% 
+#   group_by(Phylum, time, amend) %>% summarise(tpm_mean = mean(tpm_sum), sd = se(tpm_sum)) %>%
+#   mutate(Phylum = factor(Phylum, levels = c("Lenarviricota", "Kitrinoviricota", "Negarnaviricota", "Duplornaviricota", "Pisuviricota")))
+# 
+# PP_phylum <- ggplot(data=wP, aes(x=time, y=tpm_mean, colour=Phylum, group=Phylum)) +
+#   geom_line() + scale_colour_brewer(palette = "Dark2") +
+#   theme_bw() + ggtitle("P amended") +
+#   xlab("Time (weeks)") + ylab("Cummulative abundance (TPM)") + 
+#   geom_errorbar(aes(ymin=tpm_mean-sd, ymax=tpm_mean+sd), width=0.1)
+# PnoP_phylum <- ggplot(data=woP, aes(x=time, y=tpm_mean, colour=Phylum, group=Phylum)) +
+#   geom_line() + scale_colour_brewer(palette = "Dark2") +
+#   theme_bw() + ggtitle("Unamended") +
+#   xlab("Time (weeks)") + ylab("Cummulative abundance (TPM)") + 
+#   geom_errorbar(aes(ymin=tpm_mean-sd, ymax=tpm_mean+sd), width=0.1) + ylim(0, 60000)
+# ggarrange(PP_phylum, PnoP_phylum, nrow=1, ncol=2, common.legend = TRUE)
+# ggsave("tpm_sum_byphylum_line_noLenar.pdf", width = 8, height = 8)
 ```
 
 ```{r}
@@ -676,20 +683,20 @@ df <- df %>% column_to_rownames("Contig") %>% pivot_longer(cols=starts_with("T",
   mutate(replicate = gsub("T.*\\.", "", sample))
 tpm_hosts <- sum(df$tpm)
 wP <- df %>% filter(amend == "P" | time == 0) %>% group_by(Phylum, time, amend, replicate) %>% summarise(tpm_sum = sum(tpm)) %>% 
-  group_by(Phylum, time, amend) %>% summarise(tpm_mean = mean(tpm_sum), sd = sd(tpm_sum)) %>%
+  group_by(Phylum, time, amend) %>% summarise(tpm_mean = mean(tpm_sum), sd = se(tpm_sum)) %>%
   mutate(Phylum = factor(Phylum, levels = c("Lenarviricota", "Kitrinoviricota", "Negarnaviricota", "Duplornaviricota", "Pisuviricota")))
 woP <- df %>% filter(amend == "noP") %>% group_by(Phylum, time, amend, replicate) %>% summarise(tpm_sum = sum(tpm)) %>% 
-  group_by(Phylum, time, amend) %>% summarise(tpm_mean = mean(tpm_sum), sd = sd(tpm_sum)) %>%
+  group_by(Phylum, time, amend) %>% summarise(tpm_mean = mean(tpm_sum), sd = se(tpm_sum)) %>%
   mutate(Phylum = factor(Phylum, levels = c("Lenarviricota", "Kitrinoviricota", "Negarnaviricota", "Duplornaviricota", "Pisuviricota")))
 
 PP <- ggplot(data=wP, aes(x=time, y=tpm_mean, colour=Phylum, group=Phylum)) +
   geom_line() + scale_colour_brewer(palette = "Dark2") +
   theme_bw() + ggtitle("P amended") +
-  xlab("Time (weeks)") + ylab("Cummulative TPM") +  ylim(c(0, 400000)) +
+  xlab("Time (weeks)") + ylab("Cummulative TPM") +  ylim(c(0, 300000)) +
   geom_errorbar(aes(ymin=tpm_mean-sd, ymax=tpm_mean+sd), width=0.1)
 PnoP <- ggplot(data=woP, aes(x=time, y=tpm_mean, colour=Phylum, group=Phylum)) +
   geom_line() + scale_colour_brewer(palette = "Dark2") +
-  theme_bw() + ggtitle("Unamended") + ylim(c(0, 400000)) +
+  theme_bw() + ggtitle("Unamended") + ylim(c(0, 300000)) +
   xlab("Time (weeks)") + ylab("Cummulative TPM") + 
   geom_errorbar(aes(ymin=tpm_mean-sd, ymax=tpm_mean+sd), width=0.1)
 ggarrange(PP, PnoP, nrow=1, ncol=2, common.legend = TRUE)
@@ -699,24 +706,24 @@ ggsave("tpm_sum_byphylum_line.pdf", width = 8, height = 4)
 wP <- df %>% filter(amend == "P" | time == 0) %>% group_by(Phylum, time, amend, replicate) %>% summarise(tpm_sum = sum(tpm)) %>% filter(Phylum %like% "Lenar")
 woP <- df %>% filter(amend == "noP") %>% group_by(Phylum, time, amend, replicate) %>% summarise(tpm_sum = sum(tpm)) %>% filter(Phylum %like% "Lenar")
 dunn.test(wP$tpm_sum, wP$time, method = "bh", alpha = 0.1) # T0 lower than T2 and T3
-dunn.test(woP$tpm_sum, woP$time, method = "bh", alpha = 0.1) # T0 lower than T1
+dunn.test(woP$tpm_sum, woP$time, method = "bh", alpha = 0.1) # T0 lower than T1 and T2
 
 # Without Lenarviricota
-pal <- rev(brewer.pal(5, "Blues"))
-temp_wP <- wP %>% filter(!(Phylum %like% "Lenar"))
-temp_woP <- woP %>% filter(!(Phylum %like% "Lenar"))
-PP <- ggplot(data=temp_wP, aes(x=time, y=tpm_mean, colour=Phylum, group=Phylum)) +
-  geom_line() + scale_colour_manual(values = pal) +
-  theme_bw() + ggtitle("P amended") +
-  xlab("Time (weeks)") + ylab("Cummulative TPM") + ylim(0, 100000) +
-  geom_errorbar(aes(ymin=tpm_mean-sd, ymax=tpm_mean+sd), width=0.1)
-PnoP <- ggplot(data=temp_woP, aes(x=time, y=tpm_mean, colour=Phylum, group=Phylum)) +
-  geom_line() + scale_colour_manual(values = pal) +
-  theme_bw() + ggtitle("Unamended") +
-  xlab("Time (weeks)") + ylab("Cummulative TPM") + ylim(0, 100000) +
-  geom_errorbar(aes(ymin=tpm_mean-sd, ymax=tpm_mean+sd), width=0.1)
-ggarrange(PP, PnoP, nrow=1, ncol=2, common.legend = TRUE)
-ggsave("tpm_sum_byhost_nolenar_line.pdf", width = 8, height = 4)
+# pal <- rev(brewer.pal(5, "Blues"))
+# temp_wP <- wP %>% filter(!(Phylum %like% "Lenar"))
+# temp_woP <- woP %>% filter(!(Phylum %like% "Lenar"))
+# PP <- ggplot(data=temp_wP, aes(x=time, y=tpm_mean, colour=Phylum, group=Phylum)) +
+#   geom_line() + scale_colour_manual(values = pal) +
+#   theme_bw() + ggtitle("P amended") +
+#   xlab("Time (weeks)") + ylab("Cummulative TPM") + ylim(0, 100000) +
+#   geom_errorbar(aes(ymin=tpm_mean-sd, ymax=tpm_mean+sd), width=0.1)
+# PnoP <- ggplot(data=temp_woP, aes(x=time, y=tpm_mean, colour=Phylum, group=Phylum)) +
+#   geom_line() + scale_colour_manual(values = pal) +
+#   theme_bw() + ggtitle("Unamended") +
+#   xlab("Time (weeks)") + ylab("Cummulative TPM") + ylim(0, 100000) +
+#   geom_errorbar(aes(ymin=tpm_mean-sd, ymax=tpm_mean+sd), width=0.1)
+# ggarrange(PP, PnoP, nrow=1, ncol=2, common.legend = TRUE)
+# ggsave("tpm_sum_byhost_nolenar_line.pdf", width = 8, height = 4)
 
 # Temporal dynamics by host
 df <- wetup_tax %>% left_join(hosts, by="Contig") %>% filter(!is.na(host))
@@ -728,9 +735,9 @@ df <- df %>% column_to_rownames("Contig") %>% pivot_longer(cols=starts_with("T",
   )) %>%
   mutate(replicate = gsub("T.*\\.", "", sample))
 wP <- df %>% filter(amend == "P" | time == 0) %>% group_by(host, time, amend, replicate) %>% summarise(tpm_sum = sum(tpm)) %>% 
-  group_by(host, time, amend) %>% summarise(tpm_mean = mean(tpm_sum), sd = sd(tpm_sum))
+  group_by(host, time, amend) %>% summarise(tpm_mean = mean(tpm_sum), sd = se(tpm_sum))
 woP <- df %>% filter(amend == "noP") %>% group_by(host, time, amend, replicate) %>% summarise(tpm_sum = sum(tpm)) %>% 
-  group_by(host, time, amend) %>% summarise(tpm_mean = mean(tpm_sum), sd = sd(tpm_sum))
+  group_by(host, time, amend) %>% summarise(tpm_mean = mean(tpm_sum), sd = se(tpm_sum))
 
 pal <- c(Bacteria = "#6fa8dc", Fungi = "#ea9999", Invertebrates = "#ffe599", Sauria = "#8e7cc3", Mammals = "#783f04", Plants = "#b6d7a8", Other = "#bcbcbc")
 HP <- ggplot(data=wP, aes(x=time, y=tpm_mean, colour=host, group=host)) +
@@ -1657,6 +1664,8 @@ EnhancedVolcano(res,
 # Use DESeq2 to identify vOTUs that bloomed over the first week or with P amendment
 design_phage <- design %>% filter(time == 0 | time == 1) %>% mutate(time = as_factor(time))
 design_phage$grp <- paste(design_phage$Phos, design_phage$time, sep="_")
+wetup_tax <- read.delim("table_S4_vOTUs.txt", sep = "\t", header = T)
+
 #Run DESeq2
 wetup <- wetup_tax %>% column_to_rownames("Contig")
 wetup_cols <- which(colnames(wetup) %like% "^T")
@@ -1706,9 +1715,9 @@ EnhancedVolcano(res,
     shape = 1,
     title = "With phosphate amendment T1 vs. T0")
 
-sig_taxa <- res %>% filter(padj < 10e-6) 
-sig_taxa_down <- sig_taxa %>% filter(log2FoldChange < 0) # 1 Ourli
-sig_taxa_up <- sig_taxa %>% filter(log2FoldChange > 0) # 28 mostly Wolfram and Levi
+sig_taxa <- res %>% filter(padj < 1e-5) 
+sig_taxa_down <- sig_taxa %>% filter(log2FoldChange < 0) # At p=10^-5 1 Ourli
+sig_taxa_up <- sig_taxa %>% filter(log2FoldChange > 0) # At p=10^-5 28 mostly Wolfram and Levi
 ggplot(sig_taxa_up, aes(x = Order, y = log2FoldChange)) + geom_boxplot(aes(fill = Order)) + 
   theme_classic() + theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + scale_fill_brewer(palette = "Set3")
 ggsave("vOTUs_deseq_up_with_P_p10-6.pdf", height = 9, width = 8.5)
@@ -1724,10 +1733,10 @@ tpm <- Pvotus %>% select(starts_with("W", ignore.case = FALSE))
 ann <- Pvotus %>% select(Order, host)
 ann_colors = list(
     host = c(Bacteria = "#6fa8dc", Fungi = "#ea9999", Mammals = "#783f04"),
-    Order = c(Wolframvirales = "#FFFF99", Levivirales = "#6A3D9A", Tolivirales = "#E31A1C", Picornavirales = "#A6CEE3", Cryppavirales = "#FDBF6F", Tymovirales = "#33A02C"))
-    #Order = c(Timlovirales = "#FFFF99", Levivirales = "#6A3D9A", Lenarviricota = "#CAB2D6", Tolivirales = "#B2DF8A", Ourlivirales = "#FF7F00", Picornavirales = "cyan", Cryppavirales = "#FDBF6F", Wolframvirales = "#B15928", Tymovirales = "darkgreen"))
+    Order = c(Wolframvirales = "#FFFF99", Levivirales = "#6A3D9A", Tolivirales = "#E31A1C", Picornavirales = "#A6CEE3", Cryppavirales = "#FDBF6F", Tymovirales = "#33A02C")) # p < 10-5
+    #Order = c(Wolframvirales = "#FFFF99", Levivirales = "#6A3D9A", Tolivirales = "#E31A1C", Picornavirales = "#A6CEE3", Cryppavirales = "#FDBF6F", Durnavirales = "#B15928", Tymovirales = "#33A02C", Nodamuvirales = "#B2DF8A")) # p < 0.05
 
-pheatmap(tpm, color = colorRampPalette(brewer.pal(n = 9, name = "BrBG"))(100), scale = "row", cluster_rows = TRUE, cluster_cols = FALSE, legend = TRUE, annotation_row = ann, annotation_colors = ann_colors, show_rownames = FALSE, filename = "Pvotus_up_heatmap.pdf")
+pheatmap(tpm, color = colorRampPalette(brewer.pal(n = 9, name = "BrBG"))(100), scale = "row", cluster_rows = TRUE, cluster_cols = FALSE, legend = TRUE, annotation_row = ann, annotation_colors = ann_colors, show_rownames = FALSE, filename = "Pvotus_up_heatmap_p0.05.pdf")
 
 # T1 unamended vs. T0
 res <- results(dds, tidy=TRUE, contrast=c("grp", "None_1", "None_0")) %>%
